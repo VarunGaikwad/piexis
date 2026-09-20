@@ -1,0 +1,26 @@
+name: Tests
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Linux sandbox prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
+      - name: macOS sandbox prerequisites
+        if: runner.os == 'macOS'
+        run: command -v rg || brew install ripgrep
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - name: Require actual containment (no skipped sandbox tests)
+        run: npm run test:sandbox
