@@ -32,6 +32,12 @@ New sessions start in Default. Mode changes require an idle agent with no tool c
 
 YOLO selection/restoration displays a warning but does not ask for confirmation. **YOLO is genuinely unrestricted by this extension.** OS permissions, Pi project trust, and independent extensions' policies still apply.
 
+### Initialize project guidance
+
+Use `/init` to inspect the current project and create `AGENTS.md`, or improve an existing file while preserving valid instructions. Optional guidance can follow the command, for example `/init focus on testing conventions`.
+
+This is a bundled prompt template, so it uses the agent's normal tools and current permissions. Install the package to load it, then run `/reload` in an existing session. Loading only `extensions/mode.ts` does not load bundled prompts. To try it directly, use `pi --prompt-template ./prompts/init.md`.
+
 ### Plans
 
 Plan documents belong in `.pi/plans/*.md`, using Pi's configured project-directory name if it differs from `.pi`. Arbitrary Markdown elsewhere is not writable in Plan. Symlinks, multiply-linked files, nested plan directories, and non-Markdown targets are rejected.
