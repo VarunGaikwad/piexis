@@ -1,6 +1,28 @@
 # Piexis
 
-A Pi package with four permission modes. Requires Node.js 24+ and a current Pi release (tested with 0.85.1).
+## Open TUI
+
+This checkout uses [pi-open-tui](https://github.com/OldSuns/pi-open-tui) **0.3.7** for its Pi header, framed editor, responsive Git/runtime/context footer, and per-turn token/timing statistics. `.pi/settings.json` loads it alongside this package and selects Pi's built-in `dark` theme. It replaces the previous local Claude-style TUI configuration; no custom theme or Nerd Font is required.
+
+Run `/reload` in this project (or restart Pi), then `/open-tui` to configure the layout. Trust the project if Pi prompts. The extension defaults to English, a block cursor, automatic icons, and enabled footer/turn statistics. If icons appear as boxes, choose **Appearance → Icon mode → ASCII**. Enable **Hide thinking** in Pi's `/settings` to use the one-line thinking preview.
+
+Appearance preferences are saved by the extension in `~/.pi/agent/open-tui.json` (or the directory selected by `PI_CODING_AGENT_DIR`). Those preferences are user-wide, but the extension installation here is project-local. `/open-tui` → **General → Enabled** restores or replaces Pi's stock layout; `/settings` controls the color theme.
+
+To install the same version in another project:
+
+```sh
+pi install npm:pi-open-tui@0.3.7 -l
+```
+
+Or preview without saving an installation:
+
+```sh
+pi -e npm:pi-open-tui@0.3.7
+```
+
+Installing PieXis alone elsewhere does not install Open TUI. To upgrade this checkout, run `pi install npm:pi-open-tui@<version> -l`; the pinned version is not advanced by `pi update --extensions`.
+
+A Pi package with six permission modes. Requires Node.js 24+ and a current Pi release (tested with 0.85.1).
 
 ## Usage
 
@@ -10,27 +32,47 @@ pi install /absolute/path/to/piexis
 pi -e ./extensions/mode.ts
 ```
 
-Use `/mode` for the picker, or select explicitly:
+Use `/plan` to enter read-only Plan mode, optionally starting work immediately:
 
 ```text
-/mode default
-/mode plan
-/mode build
-/mode yolo
+/plan
+/plan investigate authentication and propose improvements
 ```
 
-For startup/headless use, pass `--permission-mode plan` (or another mode). Pi's own `--mode` flag still selects RPC/JSON mode; it is not a permission setting.
+Use `Alt+M` to cycle Manual → Accept Edits → Plan → Auto (when available) → Manual.
 
-| Mode | Behavior |
-| --- | --- |
-| **Default** | Every eligible agent bash/edit/write/plan-delete call requires a separate approval. Even `pwd` and `git status` need approval through bash. Reads/searches have no approval dialog. Operations remain sandboxed. |
-| **Plan Mode** | Read-only bash, with shell networking disabled. Guarded `write`/`edit`/`delete_plan` may change only direct-child `.md` documents in `.pi/plans/`. Applying a plan requires a user switch to Build. |
-| **Build** | No approval dialogs for permitted project operations, including scripts, tests, builds, and deletes through bash. Sandbox and protected-path restrictions still apply. |
-| **YOLO** | Native tools with no permission dialogs, sandbox, custom-tool blocking, or extension-specific protected-path/search filters. |
+On first trusted startup, PieXis creates `.pi/permission-modes.json` and `.pi/settings.json` when missing. It selects the current authenticated model as Auto's classifier, or the first authenticated text model. It never writes credentials or changes existing PieXis configuration. To configure Auto manually, edit `.pi/permission-modes.json`:
 
-New sessions start in Default. Mode changes require an idle agent with no tool calls in flight. Versioned mode state follows the active session branch on reload, resume, fork, and tree navigation. An explicit startup flag overrides saved state once, not later `/mode` selections. Legacy five-mode state resets to Default.
+```json
+{
+  "classifier": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "timeoutMs": 15000
+  }
+}
+```
+
+Alternatively set `PI_PERMISSION_CLASSIFIER=provider/model`. The classifier reuses PI authentication, receives only the current task and proposed action, and fails closed. Select `bypassPermissions` at launch with `--permission-mode bypassPermissions` or `--dangerously-skip-permissions`.
+
+At launch, select a mode with `--permission-mode default`, `acceptEdits`, `plan`, `auto`, `dontAsk`, or `bypassPermissions`. `dontAsk` and `bypassPermissions` are launch-only; bypass can also be selected with `--dangerously-skip-permissions`. Pi's own `--mode` flag still selects RPC/JSON mode; it is not a permission setting.
+
+| Mode                   | Behavior                                                                                                                                                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Default**            | Every eligible agent bash/edit/write/plan-delete call requires approval. The dialog offers one-time approval, approval for that tool for the session, or deny. Even `pwd` and `git status` need approval through bash. Reads/searches have no approval dialog. Operations remain sandboxed. |
+| **Plan Mode**          | Read-only bash, with shell networking disabled. Guarded `write`/`edit`/`delete_plan` may change only direct-child `.md` documents in `.pi/plans/`. Applying a plan requires a user switch to Build.              |
+| **Accept Edits**       | Auto-approves edits and a fixed filesystem-command whitelist inside the workspace.                                                                                                                               |
+| **Auto**               | Classifier-reviewed actions; risky actions are blocked.                                                                                                                                                          |
+| **Don't Ask**          | Runs only pre-approved actions and silently denies the rest.                                                                                                                                                     |
+| **Bypass Permissions** | No extension permission checks; launch-only and unsafe outside isolation.                                                                                                                                        |
+
+New sessions start in Default. Mode changes require an idle agent with no tool calls in flight. Versioned mode state follows the active session branch on reload, resume, fork, and tree navigation. An explicit startup flag overrides saved state once, not later `/plan` selections. Legacy mode state resets to Default.
 
 YOLO selection/restoration displays a warning but does not ask for confirmation. **YOLO is genuinely unrestricted by this extension.** OS permissions, Pi project trust, and independent extensions' policies still apply.
+
+### File globbing
+
+PieXis adds `glob`, a read-only file-discovery tool. It accepts `pattern`, optional `path`, and optional `limit` arguments; for example, use `glob` with `**/*.ts` or `src/**/*.spec.ts`. It uses Pi's gitignore-aware matcher, returns paths relative to the search directory, and is available in every permission mode.
 
 ### Initialize project guidance
 
@@ -44,7 +86,7 @@ Plan documents belong in `.pi/plans/*.md`, using Pi's configured project-directo
 
 Use `delete_plan` to delete a plan. Bash is completely read-only with respect to project files in Plan, including the plans directory. The exception is implemented by trusted file tools, not a writable directory handed to arbitrary shell commands.
 
-After a plan is updated, the extension asks whether to stay in Plan or switch to Build. Switching **does not automatically execute the plan or replay blocked calls**. In headless mode, it reports `/mode build` as the next step.
+`/plan <task>` enters Plan mode and starts the supplied research task immediately. Plan mode never executes a proposal or replays blocked calls; restart with the desired launch mode when ready to make changes.
 
 ### Manual shell and headless operation
 
@@ -76,10 +118,10 @@ Native Pi tool schemas, renderers, edit semantics, output limits, and bash strea
 
 ## Configuration
 
-Only the user-level file is read:
+PieXis reads the project-level file:
 
 ```text
-~/.pi/agent/permission-modes.json
+.pi/permission-modes.json
 ```
 
 Pi's agent-directory override is respected. Example:

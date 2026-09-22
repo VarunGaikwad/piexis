@@ -29,3 +29,8 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+.pi/
+.kilo/
+.agents/
+.claude/
