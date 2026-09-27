@@ -23,7 +23,7 @@ Commands supported by the manifest or README:
 | --- | --- |
 | `npm ci --ignore-scripts` | Install locked dependencies without lifecycle scripts. |
 | `npm run check` | Type-check with `tsc --noEmit`. |
-| `npm test` | Runs `node --test tests/*.test.mjs`; test files are currently absent. |
+| `npm test` | Runs `node --test tests/*.test.mjs`, including extension and skill-routing contracts. |
 | `npm run test:sandbox` | Runs `PIEXIS_REQUIRE_SANDBOX=1 node --test tests/mode-sandbox.test.mjs`; target is currently absent, and the script uses POSIX environment-assignment syntax. |
 | `pi -e ./extensions/mode.ts` | Preview the permission extension only, not the bundled prompts, skills, themes, or other extensions. |
 

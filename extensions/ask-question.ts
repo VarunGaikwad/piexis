@@ -34,7 +34,7 @@ export default function askQuestion(pi: ExtensionAPI) {
     name: "AskQuestion",
     label: "Ask Question",
     description:
-      "Ask the user one or more questions and wait for their answers. Use this when requirements, preferences, or a decision need clarification before proceeding.",
+      "Ask the user one or more questions and wait for their answers. Use this when requirements, preferences, or a decision need clarification before proceeding. Permission-mode changes remain user-controlled through Pi's mode commands or shortcuts.",
     parameters: AskQuestionParams,
     executionMode: "sequential",
 
@@ -69,7 +69,14 @@ export default function askQuestion(pi: ExtensionAPI) {
               .map((value) => Number(value.trim()) - 1)
               .filter((index) => Number.isInteger(index) && index >= 0 && index < item.options.length)
               .map((index) => item.options[index]!.label);
-            answer = selected.length > 0 ? selected : entered.trim();
+            if (selected.length > 0) answer = selected;
+            else if (item.allowOther) answer = entered.trim();
+            else {
+              return {
+                content: [{ type: "text", text: "Choose one or more listed option numbers." }],
+                details: { answers, cancelled: true }
+              };
+            }
           }
         } else if (item.options.length > 0) {
           const otherLabel = "Other — type your own answer";

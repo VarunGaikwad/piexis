@@ -22,8 +22,7 @@ Creating a high-quality MCP server involves four main phases:
 
 #### 1.1 Understand Modern MCP Design
 
-**API Coverage vs. Workflow Tools:**
-Balance comprehensive API endpoint coverage with specialized workflow tools. Workflow tools can be more convenient for specific tasks, while comprehensive coverage gives agents flexibility to compose operations. Performance varies by client—some clients benefit from code execution that combines basic tools, while others work better with higher-level workflows. When uncertain, prioritize comprehensive API coverage.
+**Tool scope:** Start with the smallest set of task-oriented tools that covers the user workflows. Add lower-level or comprehensive endpoint coverage only when real callers need composition that the focused tools cannot provide.
 
 **Tool Naming and Discoverability:**
 Clear, descriptive tool names help agents find the right tools quickly. Use consistent prefixes (e.g., `github_create_issue`, `github_list_repos`) and action-oriented naming.
@@ -71,7 +70,7 @@ Key pages to review:
 Review the service's API documentation to identify key endpoints, authentication requirements, and data models. Use web search and WebFetch as needed.
 
 **Tool Selection:**
-Prioritize comprehensive API coverage. List endpoints to implement, starting with the most common operations.
+List the user workflows first, then implement the smallest stable tool surface that covers them. Add endpoints incrementally when an evaluation or real use case demonstrates a gap.
 
 ---
 
@@ -158,7 +157,7 @@ After implementing your MCP server, create comprehensive evaluations to test its
 
 Use evaluations to test whether LLMs can effectively use your MCP server to answer realistic, complex questions.
 
-#### 4.2 Create 10 Evaluation Questions
+#### 4.2 Create a Small Evaluation Set
 
 To create effective evaluations, follow the process outlined in the evaluation guide:
 

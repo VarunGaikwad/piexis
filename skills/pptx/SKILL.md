@@ -6,6 +6,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 # PPTX creation, editing, and analysis
 
+Read only the section for the requested task; creation, template editing, and visual QA are independent workflows.
+
 A `.pptx` is a ZIP archive of XML files. Choose your approach by task:
 
 | Task | Approach |

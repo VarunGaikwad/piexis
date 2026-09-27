@@ -1,46 +1,41 @@
 ---
 name: grilling
-description: Interview the user rigorously to sharpen a plan or design. Use when asked to grill them, challenge assumptions, pressure-test a proposal, or resolve design decisions before implementation.
+description: Turn requirements, a proposal, or the current conversation into a clear specification; clarify high-impact unknowns; or pressure-test a plan before implementation. Use for “turn this into a spec,” unclear requirements, design decisions, or a requested rigorous interview. Do not use for module architecture design or code implementation.
 ---
 
-# Grilling
+# Specification and Clarification
 
-Conduct a focused, constructive interview that turns an ambiguous proposal into a defensible plan. Be persistent about unresolved decisions, not combative toward the user.
+Choose the lightest mode that produces a usable decision record. Do not implement unless the user asks.
 
-## Start
+## Modes
 
-- Use the proposal and context already provided. If there is no proposal, ask: “What plan or design would you like me to grill you on?”
-- For code-related proposals, inspect relevant project files before asking questions the code can answer. Distinguish observed facts from assumptions. Follow the session's permissions and never access secrets without approval.
-- Do not implement changes during the interview unless the user explicitly asks.
+### Synthesize
 
-## Interview
+Use when the conversation already provides enough context. Inspect relevant repository facts, then produce a specification without a ritual interview.
 
-1. Identify the goal, intended users, constraints, and observable success criteria.
-2. Keep a working list of decisions, assumptions, dependencies, and open risks.
-3. Ask **one focused question per turn**, choosing the unresolved issue with the greatest impact. Wait for the answer before continuing.
-4. When helpful, present concrete alternatives and their trade-offs, with a recommendation and its reasoning. Do not disguise your preference as a requirement.
-5. Challenge vague answers with specific examples, counterexamples, or failure scenarios. Trace decisions through their downstream consequences before moving on.
-6. If an answer can be found in the repository, investigate it rather than asking the user to do that work. Ask the user about intent and trade-offs the code cannot establish.
-7. Revisit earlier decisions when new answers contradict them. Briefly explain the conflict and ask which constraint should prevail.
+### Clarify
 
-Cover relevant topics rather than following a rigid checklist:
-- Scope and explicit non-goals
-- User workflows, edge cases, and accessibility
-- Interfaces, data ownership, and lifecycle
-- Security, privacy, authorization, and abuse cases
-- Failures, recovery, observability, and operational burden
-- Compatibility, migration, rollout, and rollback
-- Tests, acceptance criteria, and evidence that the approach works
-- Cost, complexity, alternatives, and what can be deferred
+Use when a few unknowns block a safe plan. Ask a small batch of focused, high-impact questions; investigate facts the repository can answer instead of asking the user. Continue until acceptance criteria and major constraints are clear.
 
-Skip topics that do not apply. Accept “unknown” as an uncertainty to investigate, not permission to invent an answer. Respect the user's decision to stop or leave a risk unresolved.
+### Deep interview
 
-## Finish
+Use only when the user asks to be grilled or the proposal has consequential unresolved trade-offs. Challenge assumptions with concrete scenarios, alternatives, failure modes, rollout concerns, and downstream effects. One question at a time is appropriate only when answers materially change the next question.
 
-When the significant decisions are resolved, or the user asks to stop, provide a concise summary:
-- Goal and agreed approach
-- Key decisions and rationale
-- Remaining assumptions, risks, and open questions
-- Acceptance criteria and next steps
+## Specification shape
 
-Do not claim the plan is validated merely because the interview is complete. Clearly distinguish agreed decisions from matters requiring testing or external evidence.
+Use the sections that apply:
+
+- Problem and desired outcome
+- Users, scope, and explicit non-goals
+- Behavioral requirements and edge cases
+- Key decisions, interfaces, data ownership, and compatibility constraints
+- Acceptance criteria and proof
+- Test seams or existing test patterns
+- Rollout, migration, security, operational, and rollback considerations
+- Open questions, assumptions, and risks
+
+For substantial documents, gather the audience and intended decision first. Offer a lightweight reader check: ask a fresh agent or reviewer to answer realistic questions from the finished document and fix concrete ambiguities it exposes.
+
+## Completion
+
+Distinguish agreed decisions from assumptions. Do not publish to an issue tracker, create tickets, or generate exhaustive user-story lists unless requested.

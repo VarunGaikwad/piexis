@@ -6,6 +6,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 # DOCX creation, editing, and analysis
 
+Read only the section for the requested task; creation, editing, comments, and redlining are independent workflows.
+
 A `.docx` is a ZIP archive of XML files. Choose your approach by task:
 
 | Task | Approach |

@@ -19,35 +19,11 @@
       "skillPath": "skills/engineering/ask-matt/SKILL.md",
       "computedHash": "0cd14026efa0330083cbc7adf590976c162b60e02f696a8dcce96f0b4dab8a72"
     },
-    "brand-guidelines": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "skillPath": "skills/brand-guidelines/SKILL.md",
-      "computedHash": "e48840db6ea772ceecdb68b4e50f8cc77e2534b7580aeaf4a6fe6ee7bd845d7d"
-    },
     "canvas-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "skillPath": "skills/canvas-design/SKILL.md",
       "computedHash": "3fa7ea60170023ad8268bf9fd734ea75dd404279a2ef8ddf5abaa1102ad8e5f4"
-    },
-    "cavecrew": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/cavecrew/SKILL.md",
-      "computedHash": "32d5320fb7c8b717e8c434e250ac987bebf48f553d0444afbe8215ea38ae5c09"
-    },
-    "caveman": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/caveman/SKILL.md",
-      "computedHash": "e9192d111aa44ea90bd214d5aa2b4f640195b0717faedd881e4b3927da9d88e2"
-    },
-    "caveman-commit": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/caveman-commit/SKILL.md",
-      "computedHash": "b416cf134b0f33ddadeca7977aebdbb2d3db79a166d0fce2e1aabeec98132766"
     },
     "caveman-compress": {
       "source": "juliusbrussee/caveman",
@@ -73,12 +49,6 @@
       "skillPath": "skills/caveman-explore/SKILL.md",
       "computedHash": "e22fc4edb9feb5046809c74d969b06092b8d7db851aa8502a53a185bba27c57a"
     },
-    "caveman-help": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/caveman-help/SKILL.md",
-      "computedHash": "8b03b0526c2c96f9b44dfde8f2d0063351ec9bbfa946de7a6316c96f6024ca75"
-    },
     "caveman-learn": {
       "source": "juliusbrussee/caveman",
       "sourceType": "github",
@@ -96,12 +66,6 @@
       "sourceType": "github",
       "skillPath": "skills/caveman-optimize/SKILL.md",
       "computedHash": "5e859a3a8305b5559b2f528616f634324449a426054704d43ef0b6ec8c1d9807"
-    },
-    "caveman-review": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/caveman-review/SKILL.md",
-      "computedHash": "36a4007c5c0c6b90b5accfee1cd769a86e4963b651dece2ce5f17a223a0abb4b"
     },
     "caveman-setup": {
       "source": "juliusbrussee/caveman",
@@ -145,29 +109,11 @@
       "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
       "computedHash": "37b5e9c624513551da790b52864dc8c84bff996a6d03a380cc6facdcc0a88354"
     },
-    "discernment-nudge": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "skillPath": "skills/discernment-nudge/SKILL.md",
-      "computedHash": "fbe8fab770e8e106623525caa342bd2a4c84992cb840377cb57d4365be599be8"
-    },
-    "doc-coauthoring": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "skillPath": "skills/doc-coauthoring/SKILL.md",
-      "computedHash": "b964e4c3ffe13f66f76dd7919073e60c7aec622cd8a8363bb36323188100cf8e"
-    },
     "docx": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "skillPath": "skills/docx/SKILL.md",
       "computedHash": "59c70107f8eae818bdfca7da685a6e4111aa519638b667775b794cb74987ec47"
-    },
-    "domain-modeling": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/domain-modeling/SKILL.md",
-      "computedHash": "a11713c0ff7870efa3c331b2e273f09116158485246edc89ae5088eefd1b0b48"
     },
     "frontend-design": {
       "source": "anthropics/skills",
@@ -205,35 +151,17 @@
       "skillPath": "skills/productivity/handoff/SKILL.md",
       "computedHash": "20e5f4afdef502637510bc5c64d27645d3c85c88df9cb006824bbb0980166319"
     },
-    "implement": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/implement/SKILL.md",
-      "computedHash": "2139cfedf24791adbc839aaab6019cff158af1e28bfead020ec6e0ce01b3e74d"
-    },
     "implement-spec": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/in-progress/implement-spec/SKILL.md",
       "computedHash": "91670f6f5239fc64da91c2b2f6ada62a27d2f0e8e18215fefe53feeea7a43801"
     },
-    "improve-codebase-architecture": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
-      "computedHash": "2449db6ab1ded9581f69fcc56c1f64818112d05e271fd4c5da23c6523f9d3d9d"
-    },
     "internal-comms": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "skillPath": "skills/internal-comms/SKILL.md",
       "computedHash": "0bdc8867452b7ab9ef6167f6b0db2025ce5fb03773d3f85efcef2dfeb9d4976d"
-    },
-    "investigate-first": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/investigate-first/SKILL.md",
-      "computedHash": "59b581b5abfc0e19b7dd5a7c3bb2b16621ab5e94e085065c7b724a9c86cc3d4d"
     },
     "lean-build": {
       "source": "juliusbrussee/caveman",
@@ -270,42 +198,6 @@
       "sourceType": "github",
       "skillPath": "skills/pdf/SKILL.md",
       "computedHash": "cfbc539377088ca7e44a813b30c306327385bbd973cd7a721e1743f60837dd62"
-    },
-    "ponytail": {
-      "source": "dietrichgebert/ponytail",
-      "sourceType": "github",
-      "skillPath": "skills/ponytail/SKILL.md",
-      "computedHash": "210fa0831f649ce9f8a305f7b7c8cf2a0dd09ac4dd53067109941b96e7811d4e"
-    },
-    "ponytail-audit": {
-      "source": "dietrichgebert/ponytail",
-      "sourceType": "github",
-      "skillPath": "skills/ponytail-audit/SKILL.md",
-      "computedHash": "8b8d72e6ff70b65b6c9518d470fcf29dc696eea93d28f3efa10fdcc60cbd696d"
-    },
-    "ponytail-debt": {
-      "source": "dietrichgebert/ponytail",
-      "sourceType": "github",
-      "skillPath": "skills/ponytail-debt/SKILL.md",
-      "computedHash": "0099b82174e3a4261828b4ec04d2c068b1b294fdab14f76701c2acd1f7c99539"
-    },
-    "ponytail-gain": {
-      "source": "dietrichgebert/ponytail",
-      "sourceType": "github",
-      "skillPath": "skills/ponytail-gain/SKILL.md",
-      "computedHash": "c45ecba7906960eea904218b623abf097ebff84ecbacca6d68da1d0687435f75"
-    },
-    "ponytail-help": {
-      "source": "dietrichgebert/ponytail",
-      "sourceType": "github",
-      "skillPath": "skills/ponytail-help/SKILL.md",
-      "computedHash": "10e8382b1033c9a0fec0073de6d3de3846b4f5dca7d78b6df2d476a1f4cd43c6"
-    },
-    "ponytail-review": {
-      "source": "dietrichgebert/ponytail",
-      "sourceType": "github",
-      "skillPath": "skills/ponytail-review/SKILL.md",
-      "computedHash": "4646594fcd75455533f7ff1425f4f1c5ba0fa65f88241bf262b1c4fc275f049a"
     },
     "pptx": {
       "source": "anthropics/skills",
@@ -355,23 +247,11 @@
       "skillPath": "skills/misc/scaffold-exercises/SKILL.md",
       "computedHash": "354c91f6dbc9b058632f30594aacb4edc6d25012596585abb00402af8d7ec5e9"
     },
-    "setup-matt-pocock-skills": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
-      "computedHash": "552b0f48b9fe054aa93c5d432fefbd7bd9645e3f2d20b4e22432453a81800b21"
-    },
     "setup-pre-commit": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/misc/setup-pre-commit/SKILL.md",
       "computedHash": "7fc7b680161a5cb834b165e36efc2378ff63a1f80df0a9efd18448d366bea98a"
-    },
-    "setup-ts-deep-modules": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/in-progress/setup-ts-deep-modules/SKILL.md",
-      "computedHash": "61508216ede38d8cfa712879197a76f75f4896615dbf7abc3f62571f8f5923cc"
     },
     "skill-creator": {
       "source": "anthropics/skills",
@@ -385,12 +265,6 @@
       "skillPath": "skills/slack-gif-creator/SKILL.md",
       "computedHash": "fab4fcfcaed371071069d61a3ab94dff15d10d36403ff269d147ea986cd98083"
     },
-    "surgical-patch": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/surgical-patch/SKILL.md",
-      "computedHash": "028b9c3574142d19639d9f8eb11fbb01c58479f8f441e957d598a7215e79f95d"
-    },
     "tdd": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -403,41 +277,17 @@
       "skillPath": "skills/productivity/teach/SKILL.md",
       "computedHash": "b8a69574c7a019bed84e84313dc8bf02e1d1bf925ba43057d433217c63863206"
     },
-    "template-skill": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "skillPath": "template/SKILL.md",
-      "computedHash": "38c88f722b574a922311d334a70c2008a2a5b896f06eaa75516d716e5725b26f"
-    },
-    "theme-factory": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "skillPath": "skills/theme-factory/SKILL.md",
-      "computedHash": "598ddfa9784ae2a8c55be5dbb047b98564d875dea6f4669168a87ae1ea1a4ed3"
-    },
     "to-questionnaire": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/productivity/to-questionnaire/SKILL.md",
       "computedHash": "befbec7005695163741a57bc94810dc5048fb766baaa485d5160b1d7f86335c1"
     },
-    "to-spec": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/to-spec/SKILL.md",
-      "computedHash": "3fa1a0695d4ea242fae9e569e4d22aa1788623197abb33bfadafae7315789bbf"
-    },
     "to-tickets": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/to-tickets/SKILL.md",
       "computedHash": "bf5e6ebcb4f1272de0c188d5b3901f265a03d1fa9935a21a7a56938e21e2e761"
-    },
-    "triage": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/triage/SKILL.md",
-      "computedHash": "b954d74c219c805bf353d6642251a713c9b2e9cfdb11babfe588bcfe7dfd16d5"
     },
     "verify-and-stop": {
       "source": "juliusbrussee/caveman",

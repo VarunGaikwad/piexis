@@ -9,7 +9,7 @@ license: Complete terms in LICENSE.txt
 To test local web applications, write native Python Playwright scripts.
 
 **Helper Scripts Available**:
-- `scripts/with_server.py` - Manages server lifecycle (supports multiple servers)
+- `scripts/with_server.py` - Manages server lifecycle (supports multiple servers). It executes each `--server` value with `shell=True`; pass only repository-controlled, reviewed commands and never interpolate user, network, or fixture input into those values.
 
 **Always run scripts with `--help` first** to see usage. DO NOT read the source until you try running the script first and find that a customized solution is abslutely necessary. These scripts can be very large and thus pollute your context window. They exist to be called directly as black-box scripts rather than ingested into your context window.
 

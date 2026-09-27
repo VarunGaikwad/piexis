@@ -2,7 +2,7 @@
 description: Summarize the current session concisely
 ---
 
-Review the entire current session and produce a KISS summary using compact, caveman-style wording.
+Review the entire current session and produce a concise, plain-language summary.
 
 Include only:
 - **Done:** completed work and important outcomes

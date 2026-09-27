@@ -1,9 +1,11 @@
 ---
 name: claude-api
-description: |-
-  Reference for the Claude API / Anthropic SDK — model ids, pricing, params, streaming, tool use, MCP, agents, caching, token counting, model migration.
-  TRIGGER — read BEFORE opening the target file; don't skip because it "looks like a one-liner" — whenever: the prompt names Claude/Anthropic in any form (Claude, Anthropic, Fable, Opus, Sonnet, Haiku, `anthropic`, `@anthropic-ai`, `claude-*`, `us.anthropic.*`, `[1m]`); the user asks about an LLM (pricing/model choice/limits/caching) — never answer from memory; OR the task is LLM-shaped with provider unstated (agent/MCP/tool-definition/multi-agent/RAG/LLM-judge/computer-use; generate/summarize/extract/classify/rewrite/converse over NL; debugging refusals/cutoffs/streaming/tool-calls/tokens).
-  SKIP only when another provider is being worked on (overrides all triggers): OpenAI/GPT/Gemini/Llama/Mistral/Cohere/Ollama named in the query; OR `grep -rE 'openai|langchain_openai|google.generativeai|genai|mistralai|cohere|ollama'` over the project hits (run this grep FIRST if no provider named — don't Read the file).
+description: >
+  Reference for implementing, debugging, migrating, or optimizing an Anthropic
+  Claude API or official Anthropic SDK integration: models, streaming, tools,
+  agents, caching, token counting, and API errors. Use when the request or
+  target code explicitly uses Anthropic or Claude. Do not use for provider-
+  neutral agent/MCP work or an integration for another provider.
 license: Complete terms in LICENSE.txt
 ---
 
@@ -30,9 +32,7 @@ Never mix the two - don't reach for `requests`/`fetch` in a Python or TypeScript
 
 ## Defaults
 
-Unless the user requests otherwise:
-
-For the Claude model version, please use Claude Opus 5, which you can access via the exact model string `claude-opus-5`. Please default to using adaptive thinking (`thinking: {type: "adaptive"}`) for anything remotely complicated. And finally, please default to streaming for any request that may involve long input, long output, or high `max_tokens` - it prevents hitting request timeouts. Use the SDK's `.get_final_message()` / `.finalMessage()` helper to get the complete response if you don't need to handle individual stream events
+Verify current model IDs, feature availability, pricing, and SDK signatures from the bundled language reference or official live documentation before writing integration code. Respect an existing project model choice unless the user asks to change it. Use streaming when request size, latency, or output size warrants it; otherwise prefer the simplest supported request shape.
 
 ## Warning: API Drift - Your Training Prior May Be Stale
 
@@ -189,7 +189,7 @@ Everything goes through `POST /v1/messages`. Tools and output constraints are fe
 
 **Partner pricing:** The prices above are Anthropic first-party API rates - they also apply to Claude on Microsoft Foundry, which is billed through the Microsoft Marketplace at standard API rates. Claude on Amazon Bedrock and Vertex AI is partner-operated with separate pricing - see [Bedrock](https://aws.amazon.com/bedrock/pricing/) or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/pricing#claude-models). For WebFetch, use the Pricing row in `shared/live-sources.md`.
 
-**ALWAYS use `claude-opus-5` unless the user explicitly names a different model.** This is non-negotiable. Do not use `claude-sonnet-5`, `claude-sonnet-4-6`, or any other model unless the user literally says "use sonnet" or "use haiku". Never downgrade for cost - that's the user's decision, not yours. Use `claude-fable-5-1` only when the user explicitly asks for Claude Fable 5.1, "fable", or Anthropic's most capable model - it has different API behavior than the Opus family (see below) and pricing that exceeds Opus-tier. **Use only the exact model ID strings from the table - they are complete as-is; never append date suffixes** (`claude-sonnet-4-6`, never `claude-sonnet-4-6-20251114` or any other date-suffixed variant you might recall from training data). If the user requests an older model not in the table (e.g., "opus 4.5", "sonnet 3.7"), read `shared/models.md` for the exact ID - do not construct one yourself.
+Choose a model from current official documentation according to the repository's existing choice and the requested quality, latency, and cost constraints. Do not invent model IDs or date suffixes. If the user requests an older or unfamiliar model, verify its exact ID in `shared/models.md` or official documentation before changing code.
 
 ### Claude Fable 5.1 (`claude-fable-5-1`) - most capable widely released model
 

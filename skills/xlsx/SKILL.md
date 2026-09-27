@@ -6,6 +6,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 # XLSX creation, editing, and analysis
 
+Read only the section for the requested task. Creation, model editing, and bulk conversion have different safety requirements.
+
 | Task | Approach |
 |---|---|
 | **Create** or **edit** with formulas/formatting | `openpyxl` — see gotchas below |

@@ -26,6 +26,6 @@ test("glob is registered as a read-only, gitignore-aware file-discovery tool", (
   assert.equal(typeof tool.execute, "function");
 });
 
-test("glob is pre-approved wherever Piexis permits read-only tools", () => {
+test("glob participates in Piexis's read allowlist before path policy evaluation", () => {
   assert.equal(READ_TOOLS.has("glob"), true);
 });
