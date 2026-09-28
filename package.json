@@ -20,6 +20,7 @@
     "test:runtime": "node --test tests/runtime/*.test.mjs",
     "check": "tsc --noEmit",
     "eval:permissions": "node eval/permissions.mjs",
+    "release": "node scripts/release.mjs",
     "test:sandbox": "PIEXIS_REQUIRE_SANDBOX=1 node --test tests/mode-sandbox.test.mjs"
   },
   "pi": {
