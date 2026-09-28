@@ -5,13 +5,15 @@ PieXis is a Pi package with permission/approval controls, background Git-worktre
 > [!WARNING]
 > **PieXis permission controls are not a security boundary.** They help prevent accidental or unapproved agent tool actions; they do **not** provide OS-level sandboxing, filesystem isolation, workspace-only filesystem enforcement, protected-path enforcement, network isolation, or network allowlisting. Run Pi in an appropriate container, VM, sandbox, or restricted user account when executing untrusted code or allowing unattended/high-autonomy agents.
 
-## Install and use
+## Installation
+
+Install PieXis through Pi's package manager:
 
 ```sh
 pi install npm:@preapexis/piexis
 ```
 
-Installing the package loads its declared extensions, prompts, skills, and theme. Loading only `extensions/mode.ts` loads only the permission extension. Restart Pi or run `/reload` after installation.
+The package loads its declared extensions, prompts, skills, and theme. Restart Pi or run `/reload` after installation. To load only the permission extension, load `extensions/mode.ts` directly.
 
 Use `Alt+M` while the agent is idle to cycle Manual → Accept Edits → Plan → Auto (when configured). `/plan [task]` enters Plan mode. Start `dontAsk` and `bypassPermissions` only with `--permission-mode`; `--dangerously-skip-permissions` selects `bypassPermissions`.
 
