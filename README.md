@@ -1,15 +1,14 @@
-# Piexis
+# PieXis
 
-Piexis is a Pi package with permission/approval controls, background Git-worktree tasks, prompts, skills, and UI resources. It requires Node.js 22.19+ and a current Pi release (local runtime checks passed with Pi 0.85.1 and 0.87.1 on Linux).
+PieXis is a Pi package with permission/approval controls, background Git-worktree tasks, prompts, skills, and UI resources. It requires Node.js 22.19+ and a current Pi release (local runtime checks passed with Pi 0.85.1 and 0.87.1 on Linux).
 
 > [!WARNING]
-> **Piexis permission controls are not a security boundary.** They help prevent accidental or unapproved agent tool actions; they do **not** provide OS-level sandboxing, filesystem isolation, workspace-only filesystem enforcement, protected-path enforcement, network isolation, or network allowlisting. Run Pi in an appropriate container, VM, sandbox, or restricted user account when executing untrusted code or allowing unattended/high-autonomy agents.
+> **PieXis permission controls are not a security boundary.** They help prevent accidental or unapproved agent tool actions; they do **not** provide OS-level sandboxing, filesystem isolation, workspace-only filesystem enforcement, protected-path enforcement, network isolation, or network allowlisting. Run Pi in an appropriate container, VM, sandbox, or restricted user account when executing untrusted code or allowing unattended/high-autonomy agents.
 
 ## Install and use
 
 ```sh
-npm ci --ignore-scripts
-pi install /absolute/path/to/piexis
+pi install npm:@preapexis/piexis
 ```
 
 Installing the package loads its declared extensions, prompts, skills, and theme. Loading only `extensions/mode.ts` loads only the permission extension. Restart Pi or run `/reload` after installation.
@@ -25,7 +24,7 @@ Use `Alt+M` while the agent is idle to cycle Manual → Accept Edits → Plan �
 | **Plan** (`plan`) | Allows project-local ordinary reads, task status/diff inspection/cancellation, and `AskQuestion`; Bash, external/sensitive path-tool reads, task creation/apply/cleanup, and file mutations are blocked. |
 | **Auto** (`auto`) | Directly permits ordinary project-local reads, `edit`, and `write`. Sensitive paths, protected configuration edits, uncertain recursive searches, and malformed or unsupported paths/tools remain denied. Bash outside the harmless-builtin set and eligible narrow session grants, plus remaining known external actions, receive intent-aware model review. Missing authorization, timeout, error, or invalid review denies the action. |
 | **Don't Ask** (`dontAsk`) | Permits only pre-approved reads/questions and harmless Bash builtins; denies other calls without a dialog. Launch-only. |
-| **Bypass Permissions** (`bypassPermissions`) | Skips **Piexis extension-level permission checks**. It does not enter or escape a sandbox, and does not override OS permissions or other extensions. Task scope/confirmation safeguards remain. Launch-only. |
+| **Bypass Permissions** (`bypassPermissions`) | Skips **PieXis extension-level permission checks**. It does not enter or escape a sandbox, and does not override OS permissions or other extensions. Task scope/confirmation safeguards remain. Launch-only. |
 
 Approval UI is fail-closed: calls requiring approval are denied when no permission UI is available. Relative paths resolve against the tool's current working directory, independently of the repository boundary. Both requested and resolved paths are checked; a symlink that resolves outside the project is treated as external, and malformed or unresolvable paths are denied. This is a permission policy, not filesystem sandboxing.
 
@@ -51,7 +50,7 @@ Repository configuration currently selects models only; there are no repository-
 
 ## Configuration
 
-Launching Piexis does not create `.pi/` or project configuration. It uses in-memory defaults when `.pi/permission-modes.json` is absent. Run `/piexis-init` to explicitly create `.pi/settings.json` and `.pi/permission-modes.json`; existing files are never overwritten.
+Launching PieXis does not create `.pi/` or project configuration. It uses in-memory defaults when `.pi/permission-modes.json` is absent. Run `/piexis-init` to explicitly create `.pi/settings.json` and `.pi/permission-modes.json`; existing files are never overwritten.
 
 `permission-modes.json` can select Auto's authenticated classifier and permitted background models:
 
@@ -98,7 +97,7 @@ For reviewed actions, the configured provider receives:
 - Bounded shell parsing results and risk findings; no script or Git configuration contents.
 - For task creation and worker review, the proposed task/brief, selected model, and delegated path/Bash scope, explicitly marked as untrusted action data—not user authorization.
 
-Other than the proposed delegation brief described above, it does **not** receive assistant prose/reasoning, raw tool-output history, worker result summaries, compaction summaries, file contents, edit/write replacement text, environment-variable objects, or Pi authentication credentials. The reviewer has no tool access. User prose, paths, commands, and approval strings can themselves contain secrets: recognition/redaction is best-effort, not a secret-detection guarantee. Do not use Auto when those details must not be disclosed to the selected provider. Recognizably secret-bearing or oversized review payloads are denied locally, without contacting the provider. Piexis does not log review payloads; Pi's normal user-message/session storage still applies.
+Other than the proposed delegation brief described above, it does **not** receive assistant prose/reasoning, raw tool-output history, worker result summaries, compaction summaries, file contents, edit/write replacement text, environment-variable objects, or Pi authentication credentials. The reviewer has no tool access. User prose, paths, commands, and approval strings can themselves contain secrets: recognition/redaction is best-effort, not a secret-detection guarantee. Do not use Auto when those details must not be disclosed to the selected provider. Recognizably secret-bearing or oversized review payloads are denied locally, without contacting the provider. PieXis does not log review payloads; Pi's normal user-message/session storage still applies.
 
 ### Provenance and context limits
 
@@ -116,7 +115,7 @@ Only standalone `pwd`, `pwd -L`, `pwd -P`, `true`, and `false` are automatic Bas
 
 ### Reusable grants
 
-For this first bounded implementation, reusable Bash grants cover only **Git status queries** with a fixed option vocabulary: `--short`/`-s`, `--branch`/`-b`, `--porcelain[=v1|=v2]`, and `--untracked-files=no|normal|all`. Choose either the exact command or that narrow query family. Both are bound to the canonical working directory and a fingerprint of the resolved Git executable's metadata, relevant environment, Git configuration, and Piexis settings/permission configuration. A changed fingerprint requires fresh approval/review. A status query can update Git's optional index caches; it is not part of the automatic read-only builtin set.
+For this first bounded implementation, reusable Bash grants cover only **Git status queries** with a fixed option vocabulary: `--short`/`-s`, `--branch`/`-b`, `--porcelain[=v1|=v2]`, and `--untracked-files=no|normal|all`. Choose either the exact command or that narrow query family. Both are bound to the canonical working directory and a fingerprint of the resolved Git executable's metadata, relevant environment, Git configuration, and PieXis settings/permission configuration. A changed fingerprint requires fresh approval/review. A status query can update Git's optional index caches; it is not part of the automatic read-only builtin set.
 
 Configuration is inspected locally with bounded reads and never sent to the classifier. Unknown Git configuration keys, includes, aliases, hooks/fsmonitor/pager settings, shell startup overrides, script wrappers named Git, and linked worktrees decline reusable grants. Only a small set of inert core/user/remote/branch Git configuration keys is supported. Reuse is currently unavailable on Windows. Ordinary one-time approval or Auto review remains available when reuse is declined. Scripts (`npm test`, `make`, Python, shell scripts, etc.) do **not** receive reusable narrow grants; arbitrary dependency changes cannot therefore silently reuse such a grant. Full script-dependency analysis is not implemented.
 
@@ -133,7 +132,7 @@ Denials include a reason and suggest a genuinely narrower action, clarification,
 
 Once stopped, subsequent tool calls remain blocked except `AskQuestion` (and the deliberately launch-only Bypass mode). A newly delivered provenance-verified user request resets the budget; extension-injected messages and automatic retries do not. Pending sibling approvals cannot grant or execute after the stop. Already executing processes are subject to Pi's normal cancellation, not OS isolation.
 
-Without permission UI, approval-required actions are immediately denied. At the threshold Piexis emits a `permission_blocked` diagnostic on **stderr**, records a count-only session stop entry, and aborts the run without waiting for input or forcing the whole host process to exit. Pi JSON/RPC consumers must inspect the blocked/aborted outcome; this extension does not promise a nonzero JSON-mode exit status.
+Without permission UI, approval-required actions are immediately denied. At the threshold PieXis emits a `permission_blocked` diagnostic on **stderr**, records a count-only session stop entry, and aborts the run without waiting for input or forcing the whole host process to exit. Pi JSON/RPC consumers must inspect the blocked/aborted outcome; this extension does not promise a nonzero JSON-mode exit status.
 
 ## Background tasks
 
@@ -162,13 +161,13 @@ Use `/task status`, `/task review <id>`, `/task diff <id>`, `/task cancel <id>`,
 
 Apply always requires a user dialog showing the **actual changed paths**, sensitive/configuration warnings, and observed command results—even in Auto/Bypass. The patch digest and destination findings are checked again after confirmation, followed by Git apply validation. Worker prose cannot establish successful verification: observations come from post-execution tool records, not claimed test results or blocked tool-start events. Successful command completion is not proof of test coverage; verify again in the parent workspace after application. Repeatedly declined or headless agent-requested apply/cleanup actions use the foreground denial budget.
 
-Cleanup confirms deletion and validates the Piexis ownership marker, temporary directory, Git worktree, and repository before removal. Completed unapplied changes are retained rather than discarded. Headless apply/cleanup is denied. Trusted Pi/Git executables are assumed. These checks are not protection against arbitrary host code or filesystem races.
+Cleanup confirms deletion and validates the PieXis ownership marker, temporary directory, Git worktree, and repository before removal. Completed unapplied changes are retained rather than discarded. Headless apply/cleanup is denied. Trusted Pi/Git executables are assumed. These checks are not protection against arbitrary host code or filesystem races.
 
 Metadata lives at `<agent-dir>/piexis/tasks/<project-hash>.json`, not in the repository. Legacy `.pi/piexis-tasks.json` is imported if user-level state is absent; the source is retained. Interrupted worktrees can be reviewed/cleaned, but authorization, process handles, broker tokens, and user-intent snapshots are never restored from metadata. Fast tests use Git fixtures, mocked worker processes, and mocked reviewers. A separate [runtime suite](tests/runtime/README.md) checks actual Pi RPC/JSON flows, worker processes, and TUI permissions through a pseudo-terminal on Linux, using a deterministic local provider. Live-model accuracy, other platforms, and full visual/terminal compatibility remain unvalidated.
 
 ## Select package resources
 
-Piexis uses Pi's native package resource filtering; it does not add its own plugin manager. Run `pi config` (or `pi config --local` for a trusted project) to enable or disable discovered resources. In settings, the package object can narrow resources declared by this package:
+PieXis uses Pi's native package resource filtering; it does not add its own plugin manager. Run `pi config` (or `pi config --local` for a trusted project) to enable or disable discovered resources. In settings, the package object can narrow resources declared by this package:
 
 ```json
 {
