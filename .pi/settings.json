@@ -3,5 +3,13 @@
     ".."
   ],
   "quietStartup": true,
-  "theme": "dark"
+  "theme": "dark",
+  "defaultTools": [
+    "+grep",
+    "+find",
+    "+ls"
+  ],
+  "piexis": {
+    "agentSetup": "enabled"
+  }
 }

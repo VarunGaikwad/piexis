@@ -17,8 +17,11 @@ const cases = [
   ["Implement this test-first.", "tdd", /test-first/i],
   ["Verify whether this implementation meets the acceptance criteria. Do not modify it.", "verify-and-stop", /acceptance conditions/i],
   ["Build an MCP server.", "mcp-builder", /MCP .*servers/i],
+  ["Find a skill for deployment.", "find-skills", /discover and install agent skills/i],
   ["Create an Excel workbook.", "xlsx", /spreadsheet/i],
   ["Design the frontend for this dashboard.", "frontend-design", /product web interface/i],
+  ["Keep chat responses brief without losing technical facts.", "caveman", /every technical fact kept/i],
+  ["Build the smallest complete solution.", "ponytail", /smallest change that fully solves the task/i],
 ];
 
 async function skillText(name) {
@@ -37,15 +40,15 @@ test("active canonical skills do not require removed setup workflows", async () 
   assert.doesNotMatch(text, /issue-tracker\.md/i);
 });
 
-test("only the consolidated canonical skills remain active", async () => {
+test("only canonical workflows and bundled voice/build skills remain active", async () => {
   const active = (await readdir(new URL("../skills/", import.meta.url), { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
   assert.deepEqual(active, [
-    "claude-api", "code-review", "codebase-design", "diagnosing-bugs", "docx",
-    "frontend-design", "grilling", "lean-build", "mcp-builder", "migration", "pdf",
-    "pptx", "safe-refactor", "tdd", "verify-and-stop", "webapp-testing",
+    "caveman", "code-review", "codebase-design", "diagnosing-bugs", "docx",
+    "find-skills", "frontend-design", "grilling", "lean-build", "mcp-builder", "migration", "pdf",
+    "ponytail", "pptx", "safe-refactor", "tdd", "verify-and-stop", "webapp-testing",
     "writing-for-agents", "xlsx",
   ]);
 });

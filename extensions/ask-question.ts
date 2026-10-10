@@ -1,111 +1,70 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Text } from "@earendil-works/pi-tui";
+import { AskQuestionParams, normalizeQuestions, outcome, type Result } from "../lib/question-model.ts";
+import { QuestionScreen } from "../lib/question-ui.ts";
 
-const Option = Type.Object({
-  label: Type.String({ description: "The option shown to the user" }),
-  description: Type.Optional(Type.String({ description: "Why this option may be useful" }))
-});
-
-const Question = Type.Object({
-  question: Type.String({ description: "The question to ask" }),
-  options: Type.Array(Option, { description: "Options the user can choose from" }),
-  multiSelect: Type.Optional(
-    Type.Boolean({ description: "Allow the user to choose multiple options" })
-  ),
-  allowOther: Type.Optional(
-    Type.Boolean({ description: "Allow free-form text instead of an option" })
-  )
-});
-
-const AskQuestionParams = Type.Object({
-  questions: Type.Array(Question, {
-    description: "Questions to ask; ask related questions together when possible"
-  })
-});
-
-type Answer = {
-  question: string;
-  answer: string | string[] | null;
-};
-
-/** AskQuestion gives the model a real, interactive way to clarify requirements. */
+/** Pi owns terminal input, rendering, raw mode and editor restoration. */
 export default function askQuestion(pi: ExtensionAPI) {
+  let active: AbortController | undefined;
+  pi.on("session_shutdown", async () => { active?.abort(); });
+
   pi.registerTool({
     name: "AskQuestion",
     label: "Ask Question",
     description:
-      "Ask the user one or more questions and wait for their answers. Use this when requirements, preferences, or a decision need clarification before proceeding. Permission-mode changes remain user-controlled through Pi's mode commands or shortcuts.",
+      "Ask the user related clarification questions in the terminal and wait for validated answers. Options may have stable IDs. Supports single, multi, and text questions, custom answers, defaults (option IDs), selection limits, and required/optional answers. Legacy options/multiSelect/allowOther calls remain supported.",
     parameters: AskQuestionParams,
     executionMode: "sequential",
 
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (ctx.mode !== "tui") {
-        return {
-          content: [{ type: "text", text: "AskQuestion requires an interactive TUI." }],
-          details: { answers: [], cancelled: true }
-        };
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const result = (details: Result) => ({
+        content: [{ type: "text" as const, text: JSON.stringify(details) }],
+        details
+      });
+      if (signal?.aborted) return result(outcome("aborted"));
+      if (ctx.mode !== "tui" || !process.stdin.isTTY || !process.stdout.isTTY || !ctx.hasUI ||
+          process.stdin.destroyed || process.stdin.readableEnded || process.stdout.destroyed) {
+        return result(outcome("requires_interaction", [], "AskQuestion requires an interactive TUI and terminal input/output."));
       }
-
-      const answers: Answer[] = [];
-      for (const item of params.questions) {
-        if (item.options.length === 0 && item.allowOther !== true) {
-          return {
-            content: [{ type: "text", text: "AskQuestion requires options or allowOther=true." }],
-            details: { answers, cancelled: true }
-          };
-        }
-
-        let answer: string | string[] | null;
-        if (item.multiSelect) {
-          const choices = item.options.map((option, index) => `${index + 1}. ${option.label}`);
-          const entered = await ctx.ui.input(
-            `${item.question}\n${choices.join("\n")}\nEnter option numbers separated by commas:`,
-            item.allowOther ? "or type a free-form answer" : "e.g. 1, 3"
-          );
-          if (entered == null) answer = null;
-          else {
-            const selected = entered
-              .split(",")
-              .map((value) => Number(value.trim()) - 1)
-              .filter((index) => Number.isInteger(index) && index >= 0 && index < item.options.length)
-              .map((index) => item.options[index]!.label);
-            if (selected.length > 0) answer = selected;
-            else if (item.allowOther) answer = entered.trim();
-            else {
-              return {
-                content: [{ type: "text", text: "Choose one or more listed option numbers." }],
-                details: { answers, cancelled: true }
-              };
-            }
-          }
-        } else if (item.options.length > 0) {
-          const otherLabel = "Other — type your own answer";
-          const choices = item.options.map((option) =>
-            option.description ? `${option.label} — ${option.description}` : option.label
-          );
-          if (item.allowOther) choices.push(otherLabel);
-          const selected = await ctx.ui.select(item.question, choices);
-          answer = selected ?? null;
-          if (selected === otherLabel) {
-            answer = (await ctx.ui.input(item.question, "Type your answer")) ?? null;
-          } else if (answer != null) {
-            answer = item.options.find((option) =>
-              (option.description ? `${option.label} — ${option.description}` : option.label) === answer
-            )?.label ?? answer;
-          }
-        } else {
-          answer = (await ctx.ui.input(item.question, "Type your answer")) ?? null;
-        }
-
-        answers.push({ question: item.question, answer });
-        if (answer == null) break;
+      // sequential protects model batches; this guard also protects direct overlapping calls.
+      if (active) return result(outcome("error", [], "Another AskQuestion interaction is already active."));
+      const controller = new AbortController();
+      active = controller;
+      const interactionSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      let screen: QuestionScreen | undefined;
+      try {
+        const questions = normalizeQuestions(params);
+        const details = await ctx.ui.custom<Result>((tui, theme, _keybindings, done) => {
+          screen = new QuestionScreen(questions, tui, theme, done, interactionSignal);
+          return screen;
+        });
+        return result(details);
+      } catch (error) {
+        return result(outcome("error", [], error instanceof Error ? error.message : String(error)));
+      } finally {
+        screen?.dispose();
+        active = undefined;
       }
+    },
 
-      const cancelled = answers.some((entry) => entry.answer == null);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ answers, cancelled }) }],
-        details: { answers, cancelled }
-      };
+    renderResult(result, _options, theme) {
+      const details = result.details as Result | undefined;
+      if (!details) {
+        const text = result.content.find((entry) => entry.type === "text");
+        return new Text(text?.type === "text" ? text.text : "AskQuestion", 0, 0);
+      }
+      // Resumed sessions may contain results from the original label-only tool.
+      const status = details.status ?? (details.cancelled ? "cancelled" : "answered");
+      if (status !== "answered") {
+        const text = (details.error ?? `AskQuestion: ${status}`).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
+        return new Text(theme.fg(status === "error" ? "error" : "warning", text), 0, 0);
+      }
+      const lines = details.answers.map((entry) => {
+        const answer = Array.isArray(entry.answer) ? entry.answer.join(", ") : entry.answer;
+        const text = `${entry.question}: ${answer}`.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
+        return theme.fg("success", "✓ ") + text;
+      });
+      return new Text(lines.join("\n"), 0, 0);
     }
   });
 }

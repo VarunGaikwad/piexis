@@ -14,7 +14,7 @@ $ARGUMENTS
 - Target the current directory. Do not silently switch to a Git ancestor, nested package, or another worktree.
 - Check the working-tree status when Git is available. Preserve unrelated changes, staged work, and intentional deletions; do not reset, clean, stage, or commit anything. If `AGENTS.md` is marked deleted and the user's intent is unclear, ask before recreating it.
 - Only create or edit `AGENTS.md`. Do not repair source, tests, manifests, or other documentation as part of this task.
-- Respect the active permission mode. In Plan/read-only mode, report the proposed changes instead of writing. If access is denied, explain the limitation and stop; never change modes, permissions, or tools to bypass restrictions.
+- Respect host access restrictions. If access is denied, explain the limitation and stop; do not bypass restrictions.
 
 ## 2. Inspect selectively
 
@@ -29,7 +29,15 @@ Exclude secrets, credential files, dependency/vendor directories, generated outp
 
 ## 3. Distill useful project guidance
 
-Include only sections that are supported and useful:
+Include an **Agent workflow** section with these requested Piexis defaults. Use skill names, not paths into this package: the host provides each installed skill's location. Read the matching `SKILL.md` before following it.
+
+- **caveman:** use the bundled skill for concise chat responses. Preserve technical facts and exact code, commands, paths, and errors. Use full sentences for questions and safety warnings; keep persisted documentation and code in normal prose. Honor requests to stop caveman or use normal mode.
+- **grilling:** use the bundled skill before asking the user clarification questions about requirements, preferences, or decisions. Choose its lightest suitable mode; do not turn a clear task into a ritual interview. Use `AskQuestion` when available in an interactive TUI; otherwise ask in chat. Cancellation is not consent.
+- **ponytail:** use the bundled skill when building or changing code. Make the smallest complete change, reuse existing patterns, and retain validation, error handling, security, accessibility, and required tests. Combine it with the task-specific skill rather than replacing debugging, migration, or test-first guidance.
+
+These are instruction defaults, not runtime enforcement or tool permissions. Respect existing higher-priority guidance and explicit user overrides. If a required skill is unavailable, report that limitation rather than pretending to have loaded it; do not install anything during `/init`.
+
+Include other sections only when supported and useful:
 
 - **Overview and layout:** what the project does, major modules, and the few paths an agent needs to navigate it.
 - **Commands:** exact setup, build, lint, type-check, format, and test commands found in repository configuration or documentation. Include required working directories or prerequisites when documented. Identify the package manager from repository evidence, not preference.
