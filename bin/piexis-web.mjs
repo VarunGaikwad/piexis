@@ -15,7 +15,7 @@ const workspace = path.resolve(value("--workspace") || process.cwd());
 const port = value("--port") || process.env.PIXIS_PORT || "4317";
 const token = value("--token") || process.env.PIXIS_TOKEN || randomBytes(32).toString("base64url");
 const server = path.join(root, "apps", "server", "src", "index.ts");
-const child = spawn(process.execPath, ["--import", "tsx", server], {
+const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"), server], {
   cwd: workspace,
   env: { ...process.env, PIXIS_WORKSPACE: workspace, PIXIS_PORT: port, PIXIS_TOKEN: token, PIXIS_ORIGIN: `http://127.0.0.1:${port}` },
   stdio: "inherit",
