@@ -29,7 +29,12 @@ export class PiRpcClient extends EventEmitter {
 
   start(): void {
     if (this.#child) return;
-    const child = spawn(this.executable, [...this.executableArgs, "--mode", "rpc"], { cwd: this.cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(this.executable, [...this.executableArgs, "--mode", "rpc"], {
+      cwd: this.cwd,
+      shell: process.platform === "win32",
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true
+    });
     this.#child = child;
     child.stdout?.on("data", (chunk: Buffer) => this.#consume(chunk.toString("utf8")));
     child.stderr?.on("data", (chunk: Buffer) => this.emit("diagnostic", chunk.toString("utf8")));
