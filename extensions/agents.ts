@@ -5,7 +5,7 @@ import { Key } from "@earendil-works/pi-tui";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as piSdk from "@earendil-works/pi-coding-agent";
 import {
-  agentNames, childResourceArgs, isAgentName, loadAgentConfig, profiles, routeSubagent, subagentTools,
+  agentNames, childResourceArgs, completeProjectAgentConfig, isAgentName, loadAgentConfig, profiles, routeSubagent, subagentTools,
   type AgentName, type Effort,
 } from "../lib/agents.ts";
 import { limitOutput, piInvocation, runSubagent } from "../lib/subagent-runner.ts";
@@ -13,12 +13,15 @@ import { limitOutput, piInvocation, runSubagent } from "../lib/subagent-runner.t
 const AgentSchema = Type.Union(agentNames.map((name) => Type.Literal(name)));
 const parameters = Type.Object({
   agent: AgentSchema,
+  purpose: Type.Optional(Type.Literal("explore", { description: "Use the configured small_model for read-only codebase exploration; available only for ask when delegate_exploration is enabled." })),
   task: Type.String({ minLength: 1, maxLength: 50_000, description: "Self-contained task including needed context; conversation history is not inherited." }),
 });
 const stateType = "piexis-agent";
 
 export default function agentsExtension(pi: ExtensionAPI) {
   let active: AgentName = "code";
+  let explorationEnabled = false;
+  let switching = false;
   const depthText = process.env.PIEXIS_SUBAGENT_DEPTH ?? "0";
   const depth = /^[0-2]$/.test(depthText) ? Number(depthText) : 2;
   const jobs = new Map<AbortController, Promise<unknown>>();
@@ -30,11 +33,31 @@ export default function agentsExtension(pi: ExtensionAPI) {
     if (ctx.hasUI) ctx.ui.setStatus("piexis-agent", `agent:${active}`);
   }
 
-  function activate(name: AgentName, ctx: ExtensionContext) {
-    active = name;
-    pi.appendEntry(stateType, { agent: active });
-    status(ctx);
-    ctx.ui.notify(`Agent: ${active}`, "info");
+  async function activate(name: AgentName, ctx: ExtensionContext) {
+    if (switching || !ctx.isIdle() || jobs.size > 0) {
+      ctx.ui.notify("Wait for the current agent to finish before switching profiles.", "warning");
+      return;
+    }
+    switching = true;
+    try {
+      const config = await loadAgentConfig(ctx.cwd, getAgentDir(), ctx.isProjectTrusted());
+      const override = config.subagent_variant_overrides?.[name];
+      const modelId = override?.model ?? config.model;
+      if (modelId) {
+        const slash = modelId.indexOf("/");
+        const model = ctx.modelRegistry.find(modelId.slice(0, slash), modelId.slice(slash + 1));
+        if (!model || !(await pi.setModel(model))) throw new Error(`Configured model unavailable: ${modelId}. Check /model and /login.`);
+      }
+      if (override?.effort !== undefined) pi.setThinkingLevel(override.effort);
+      active = name;
+      pi.appendEntry(stateType, { agent: active });
+      status(ctx);
+      ctx.ui.notify(`Agent: ${active}`, "info");
+    } catch (error) {
+      ctx.ui.notify(`Agents: ${error instanceof Error ? error.message : String(error)}`, "warning");
+    } finally {
+      switching = false;
+    }
   }
 
   function restore(ctx: ExtensionContext, applyFlag = false) {
@@ -52,6 +75,8 @@ export default function agentsExtension(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     restore(ctx, true);
+    try { explorationEnabled = Boolean((await loadAgentConfig(ctx.cwd, getAgentDir(), ctx.isProjectTrusted())).delegate_exploration); }
+    catch { explorationEnabled = false; }
     if (depth >= 2) pi.setActiveTools(pi.getActiveTools().filter((name) => name !== "subagent"));
     // Only initialize a new main session; explicit CLI choices and resumed models remain authoritative.
     if (depth !== 0 || ctx.sessionManager.getBranch().some((entry) => entry.type === "message")) return;
@@ -68,6 +93,24 @@ export default function agentsExtension(pi: ExtensionAPI) {
   });
   pi.on("session_tree", (_event, ctx) => restore(ctx));
 
+  pi.registerCommand("agent-config", {
+    description: "Fill missing project agent.json settings with defaults without replacing configured values",
+    handler: async (_args, ctx) => {
+      await ctx.waitForIdle();
+      if (!ctx.isProjectTrusted()) { ctx.ui.notify("Agent configuration is available only in trusted projects.", "warning"); return; }
+      try {
+        const currentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+        const result = await completeProjectAgentConfig(ctx.cwd, getAgentDir(), currentModel);
+        const message = result === "created" ? "Created .pi/agent.json with default agent settings."
+          : result === "updated" ? "Added missing .pi/agent.json settings; existing values were preserved."
+          : "Your project agent configuration is already complete.";
+        ctx.ui.notify(message, "info");
+      } catch (error) {
+        ctx.ui.notify(`Agent configuration was not updated: ${error instanceof Error ? error.message : String(error)}`, "warning");
+      }
+    },
+  });
+
   pi.registerCommand("agent", {
     description: "Switch agent profile (plan, orchestrator, debug, ask, code)",
     handler: async (args, ctx) => {
@@ -79,32 +122,30 @@ export default function agentsExtension(pi: ExtensionAPI) {
         if (!name) return;
       }
       if (!isAgentName(name)) { ctx.ui.notify(`Unknown agent: ${name}. Choose ${agentNames.join(", ")}.`, "error"); return; }
-      activate(name, ctx);
+      await activate(name, ctx);
     },
   });
 
   pi.registerShortcut(Key.alt("a"), {
     description: "Cycle agent profile (plan → orchestrator → debug → ask → code)",
-    handler: (ctx) => {
+    handler: async (ctx) => {
       if (ctx.mode !== "tui") return;
-      if (!ctx.isIdle() || jobs.size > 0) {
-        ctx.ui.notify("Wait for the current agent to finish before switching profiles.", "warning");
-        return;
-      }
-      activate(agentNames[(agentNames.indexOf(active) + 1) % agentNames.length], ctx);
+      await activate(agentNames[(agentNames.indexOf(active) + 1) % agentNames.length], ctx);
     },
   });
 
   pi.on("before_agent_start", (event) => ({
     systemPrompt: `${event.systemPrompt}\n\nPiexis agent profile: ${active}\n${profiles[active]}\n${depth > 0
-      ? "You are a delegated subagent. Work only on the supplied task. If user input is needed, return the question to the parent; no terminal interaction is available. Report changed files, results, and unexecuted checks."
-      : "All five profiles are callable through subagent. Delegate only when a separate context helps; supply a focused task and all relevant context."}`,
+      ? "You are a delegated subagent. Work only on the supplied task. If user input is needed, return the question to the parent; no terminal interaction is available. Report changed files, results, and unexecuted checks. If the subagent tool is available, use purpose: explore only for bounded read-only codebase exploration and return concise file paths, line numbers, and uncertainties."
+      : explorationEnabled
+        ? "All five profiles are callable through subagent. Delegate only when a separate context helps; supply a focused task and all relevant context. For bounded codebase exploration involving discovery, several files, or a summary, delegate to subagent with agent: ask and purpose: explore. It uses the configured small model and must return concise findings with file paths, line numbers, and uncertainties. Keep planning, judgment, edits, and final verification here; do not delegate a trivial single read."
+        : "All five profiles are callable through subagent. Delegate only when a separate context helps; supply a focused task and all relevant context."}`,
   }));
 
   pi.registerTool({
     name: "subagent",
     label: "Subagent",
-    description: "Delegate a self-contained task to plan, orchestrator, debug, ask, or code in an isolated Pi process in this workspace. Small tasks automatically use the configured small_model; variant overrides win. Model, effort, and routing reason are returned. Calls are sequential to avoid concurrent workspace edits. No sandboxing; child questions return to the parent.",
+    description: "Delegate a self-contained task to plan, orchestrator, debug, ask, or code in an isolated Pi process in this workspace. With delegate_exploration enabled, ask plus purpose: explore always uses the configured small_model with read-only tools. Other small tasks can automatically use small_model; variant overrides win. Model, effort, and routing reason are returned. Calls are sequential to avoid concurrent workspace edits. No sandboxing; child questions return to the parent.",
     executionMode: "sequential",
     parameters,
     async execute(_id, params, signal, onUpdate, ctx) {
@@ -113,13 +154,16 @@ export default function agentsExtension(pi: ExtensionAPI) {
       if ((active === "plan" || active === "ask") && params.agent !== "plan" && params.agent !== "ask") {
         throw new Error(`${active} may delegate only to plan or ask; switch to code, debug, or orchestrator for changes`);
       }
+      const exploration = params.purpose === "explore";
+      if (exploration && params.agent !== "ask") throw new Error("Exploration delegation requires agent: ask");
       if (!ctx.model) throw new Error("Select a main model before delegating");
       const config = await loadAgentConfig(ctx.cwd, getAgentDir(), ctx.isProjectTrusted());
-      const route = routeSubagent(config, params.agent, params.task, `${ctx.model.provider}/${ctx.model.id}`, (ctx.thinkingLevel ?? pi.getThinkingLevel()) as Effort);
+      if (exploration && !config.delegate_exploration) throw new Error("Enable delegate_exploration in agent.json before delegating exploration");
+      const route = routeSubagent(config, params.agent, params.task, `${ctx.model.provider}/${ctx.model.id}`, (ctx.thinkingLevel ?? pi.getThinkingLevel()) as Effort, exploration);
       const slash = route.model.indexOf("/");
       const selected = ctx.modelRegistry.find(route.model.slice(0, slash), route.model.slice(slash + 1));
       if (!selected || !ctx.modelRegistry.hasConfiguredAuth(selected)) throw new Error(`Subagent model unavailable: ${route.model}. Check /model and /login.`);
-      const tools = subagentTools(params.agent, pi.getActiveTools(), depth + 1);
+      const tools = subagentTools(params.agent, pi.getActiveTools(), depth + 1, config.delegate_exploration && !exploration);
       const controller = new AbortController();
       const abort = () => controller.abort(signal?.reason);
       signal?.addEventListener("abort", abort, { once: true });

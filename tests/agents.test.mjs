@@ -10,6 +10,7 @@ import agentsExtension from "../extensions/agents.ts";
 import uiExtension from "../extensions/ui.ts";
 import { matchesKey, visibleWidth } from "@earendil-works/pi-tui";
 import { agentNames, childResourceArgs, initializeAgentConfig, isSmallTask, loadAgentConfig, parseAgentConfig, routeSubagent, subagentTools } from "../lib/agents.ts";
+import { agentConfigSchemaUrl } from "../lib/agent-config.ts";
 import { emptyUsage, limitOutput, piInvocation, runSubagent } from "../lib/subagent-runner.ts";
 
 async function fixture(work) {
@@ -46,14 +47,18 @@ async function environment(f, work) {
 
 function harness(f, flag) {
   const handlers = new Map(), commands = new Map(), shortcuts = new Map(), statuses = new Map(), notifications = [], states = [];
-  let tool, active = ["read", "bash", "edit", "write", "grep", "find", "ls", "AskQuestion", "subagent"], mainModel;
+  let tool, active = ["read", "bash", "edit", "write", "grep", "find", "ls", "AskQuestion", "subagent"], mainModel, effort;
   const pi = {
     on(name, handler) { handlers.set(name, handler); }, registerFlag() {}, getFlag: () => flag,
     registerCommand(name, command) { commands.set(name, command); }, registerTool(value) { tool = value; },
     registerShortcut(key, shortcut) { shortcuts.set(key, shortcut); },
     getActiveTools: () => active, setActiveTools(value) { active = value; },
     getThinkingLevel: () => "high", appendEntry(type, data) { states.push({ type: "custom", customType: type, data }); },
-    async setModel(model) { mainModel = model; return true; },
+    async setModel(model) {
+      if (model.id === "unauthenticated") return false;
+      mainModel = model; return true;
+    },
+    setThinkingLevel(value) { effort = value; },
   };
   agentsExtension(pi);
   const ctx = {
@@ -65,7 +70,7 @@ function harness(f, flag) {
     ui: { setStatus(key, value) { statuses.set(key, value); }, notify(...args) { notifications.push(args); }, select: async () => undefined },
   };
   return { ctx, handlers, commands, shortcuts, statuses, notifications, states, get tool() { return tool; },
-    get active() { return active; }, get mainModel() { return mainModel; },
+    get active() { return active; }, get mainModel() { return mainModel; }, get effort() { return effort; },
     start: () => handlers.get("session_start")({}, ctx),
     execute: (params, signal, update) => tool.execute("call", params, signal, update, ctx),
   };
@@ -79,7 +84,8 @@ test("validates configuration and rejects typos, bad models and efforts", () => 
     { subagent_variant_overrides: { code: { effort: "huge" } } }, { subagent_variant_overrides: { code: { tools: [] } } }]) {
     assert.throws(() => parseAgentConfig(bad));
   }
-  assert.equal(parseAgentConfig({ subagent_model: "provider/org/model" }).subagent_model, "provider/org/model");
+  assert.equal(parseAgentConfig({ subagent_model: "provider/org/model", delegate_exploration: true }).delegate_exploration, true);
+  assert.throws(() => parseAgentConfig({ delegate_exploration: "true" }));
 });
 
 test("trusted project config merges fields within overrides without writing settings", async () => {
@@ -122,7 +128,7 @@ test("opt-in agent scaffold uses the active model, restrictive permissions and a
     assert.deepEqual(created, [true, false]);
     const path = join(f.cwd, ".pi", "agent.json");
     assert.deepEqual(JSON.parse(await readFile(path, "utf8")), {
-      model: "test/current", small_model: "test/current", subagent_model: "test/current",
+      $schema: agentConfigSchemaUrl, model: "test/current", small_model: "test/current", subagent_model: "test/current", delegate_exploration: false,
       subagent_variant_overrides: {
         plan: { model: "test/current", effort: "high" },
         orchestrator: { model: "test/current", effort: "high" },
@@ -137,9 +143,27 @@ test("opt-in agent scaffold uses the active model, restrictive permissions and a
   });
 });
 
+test("agent-config command fills only missing project settings", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.cwd, ".pi", "agent.json"), JSON.stringify({ model: "test/custom", delegate_exploration: true }));
+    const h = harness(f);
+    await h.commands.get("agent-config").handler("", h.ctx);
+    const config = JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8"));
+    assert.equal(config.$schema, agentConfigSchemaUrl);
+    assert.equal(config.model, "test/custom");
+    assert.equal(config.delegate_exploration, true);
+    assert.equal(config.small_model, "test/custom");
+    assert.equal(config.subagent_model, "test/custom");
+    assert.equal(config.subagent_variant_overrides.code.model, "test/custom");
+    assert.match(h.notifications.at(-1)[0], /Added missing/);
+    await h.commands.get("agent-config").handler("", h.ctx);
+    assert.match(h.notifications.at(-1)[0], /already complete/);
+  }));
+});
+
 test("agent scaffold preserves inherited user configuration", async () => {
   await fixture(async (f) => {
-    const inherited = { model: "test/main", small_model: "test/small", subagent_model: "test/worker", subagent_variant_overrides: {
+    const inherited = { model: "test/main", small_model: "test/small", subagent_model: "test/worker", delegate_exploration: true, subagent_variant_overrides: {
       debug: { effort: "off" }, ask: { model: "test/answer" }, code: { model: "test/code", effort: "max" }
     } };
     const path = join(f.agentDir, "agent.json");
@@ -147,6 +171,7 @@ test("agent scaffold preserves inherited user configuration", async () => {
     await writeFile(path, original);
     assert.equal(await initializeAgentConfig(f.cwd, f.agentDir, "test/current"), true);
     assert.deepEqual(JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8")), {
+      $schema: agentConfigSchemaUrl,
       ...inherited,
       subagent_variant_overrides: {
         plan: { model: "test/worker", effort: "high" },
@@ -205,12 +230,18 @@ test("automatic small routing is conservative and variant overrides take precede
   const overrides = { ...config, subagent_variant_overrides: { ask: { model: "test/ask", effort: "max" }, code: { effort: "high" } } };
   assert.deepEqual(routeSubagent(overrides, "ask", "Locate config", current, "off"), { model: "test/ask", effort: "max", reason: "variant override" });
   assert.equal(routeSubagent(overrides, "code", "Fix a typo", current, "off").effort, "high");
+  assert.deepEqual(routeSubagent(overrides, "ask", "Explore the configuration", current, "high", true), {
+    model: "test/small", effort: "low", reason: "configured exploration small model",
+  });
+  assert.throws(() => routeSubagent({}, "ask", "Explore", current, "high", true), /requires small_model/);
 });
 
 test("child tools never add inactive tools and resource flags preserve explicit extensions", () => {
   const active = ["read", "bash", "write", "AskQuestion", "subagent", "custom"];
   assert.deepEqual(subagentTools("ask", active, 1), ["read"]);
   assert.deepEqual(subagentTools("plan", active, 1), ["read"]);
+  assert.deepEqual(subagentTools("plan", active, 1, true), ["read", "subagent"]);
+  assert.deepEqual(subagentTools("ask", active, 2, true), ["read"]);
   assert.deepEqual(subagentTools("orchestrator", active, 1), ["read", "bash", "write", "subagent", "custom"]);
   assert.deepEqual(subagentTools("code", active, 2), ["read", "bash", "write", "custom"]);
   assert.deepEqual(childResourceArgs(["--model", "test/main", "--no-extensions", "-e", "gate.ts", "--no-mcp", "--api-key", "private", "--", "-e", "bad.ts"]), ["--no-extensions", "-e", "gate.ts", "--no-mcp"]);
@@ -245,6 +276,31 @@ test("all five profiles execute as child agents with visible routing and preserv
       assert.match(result.content[0].text, new RegExp(result.details.reason));
       assert.ok(updates.length > 0);
     }
+  }));
+});
+
+test("configured exploration always uses the small model and stays read-only", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({
+      small_model: "test/small", delegate_exploration: true,
+      subagent_variant_overrides: { ask: { model: "test/ask", effort: "max" } },
+    }));
+    const h = harness(f);
+    await h.start();
+    assert.match(h.handlers.get("before_agent_start")({ systemPrompt: "base" }).systemPrompt, /purpose: explore/);
+    const result = await h.execute({ agent: "ask", purpose: "explore", task: "Locate configuration loading" });
+    assert.equal(result.details.model, "test/small");
+    assert.equal(result.details.effort, "low");
+    assert.equal(result.details.reason, "configured exploration small model");
+    assert.deepEqual(h.ctx.model, { provider: "test", id: "current" });
+    const output = JSON.parse(result.details.output);
+    const tools = output.args[output.args.indexOf("--tools") + 1].split(",");
+    assert.ok(!tools.includes("subagent") && !tools.includes("bash"));
+    await assert.rejects(h.execute({ agent: "plan", purpose: "explore", task: "Locate configuration loading" }), /requires agent: ask/);
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({ small_model: "test/small", delegate_exploration: false }));
+    await assert.rejects(h.execute({ agent: "ask", purpose: "explore", task: "Locate configuration loading" }), /Enable delegate_exploration/);
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({ delegate_exploration: true }));
+    await assert.rejects(h.execute({ agent: "ask", purpose: "explore", task: "Locate configuration loading" }), /requires small_model/);
   }));
 });
 
@@ -310,6 +366,85 @@ test("Alt+A cycles all profiles, persists the selection and respects busy/non-TU
     resumed.states.push(...h.states);
     await resumed.start();
     assert.equal(resumed.statuses.get("piexis-agent"), "agent:debug");
+  }));
+});
+
+test("commands, picker and cycling apply merged profile models and effort", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({
+      model: "test/main", small_model: "test/small", subagent_model: "test/worker",
+      subagent_variant_overrides: { plan: { model: "test/planner", effort: "high" }, debug: { effort: "max" } },
+    }));
+    await writeFile(join(f.cwd, ".pi", "agent.json"), JSON.stringify({
+      subagent_variant_overrides: { plan: { effort: "low" }, ask: { model: "test/answer", effort: "off" } },
+    }));
+    const h = harness(f);
+    h.ctx.mode = "tui";
+    await h.start();
+    await h.shortcuts.get("alt+a").handler(h.ctx);
+    assert.equal(h.mainModel.id, "planner");
+    assert.equal(h.effort, "low");
+    assert.equal(h.statuses.get("piexis-agent"), "agent:plan");
+    await h.commands.get("agent").handler("debug", h.ctx);
+    assert.equal(h.mainModel.id, "main");
+    assert.equal(h.effort, "max");
+    h.ctx.ui.select = async () => "ask";
+    await h.commands.get("agent").handler("", h.ctx);
+    assert.equal(h.mainModel.id, "answer");
+    assert.equal(h.effort, "off");
+    h.ctx.isProjectTrusted = () => false;
+    await h.commands.get("agent").handler("plan", h.ctx);
+    assert.equal(h.mainModel.id, "planner");
+    assert.equal(h.effort, "high");
+  }));
+});
+
+test("unconfigured profile fields leave current settings alone", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    const h = harness(f);
+    await h.commands.get("agent").handler("plan", h.ctx);
+    assert.equal(h.mainModel, undefined);
+    assert.equal(h.effort, undefined);
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({
+      small_model: "test/small", subagent_model: "test/worker",
+      subagent_variant_overrides: { ask: { effort: "low" }, code: { model: "test/coder" } },
+    }));
+    await h.commands.get("agent").handler("ask", h.ctx);
+    assert.equal(h.mainModel, undefined);
+    assert.equal(h.effort, "low");
+    await h.commands.get("agent").handler("code", h.ctx);
+    assert.equal(h.mainModel.id, "coder");
+    assert.equal(h.effort, "low");
+  }));
+});
+
+test("failed profile switches preserve model, effort and profile and release the switch guard", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    const h = harness(f);
+    h.ctx.mode = "tui";
+    await h.start();
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({
+      subagent_variant_overrides: { code: { model: "test/coder", effort: "medium" } },
+    }));
+    await h.commands.get("agent").handler("code", h.ctx);
+    const count = h.states.length;
+    for (const value of ["{bad", ...["missing", "unauthenticated"].map((id) => JSON.stringify({
+      subagent_variant_overrides: { plan: { model: `test/${id}`, effort: "max" } },
+    }))]) {
+      await writeFile(join(f.agentDir, "agent.json"), value);
+      await h.shortcuts.get("alt+a").handler(h.ctx);
+      assert.equal(h.mainModel.id, "coder");
+      assert.equal(h.effort, "medium");
+      assert.equal(h.statuses.get("piexis-agent"), "agent:code");
+      assert.equal(h.states.length, count);
+      assert.equal(h.notifications.at(-1)[1], "warning");
+    }
+    await writeFile(join(f.agentDir, "agent.json"), "{}");
+    await Promise.all([h.shortcuts.get("alt+a").handler(h.ctx), h.commands.get("agent").handler("ask", h.ctx)]);
+    assert.equal(h.states.length, count + 1);
+    assert.equal(h.statuses.get("piexis-agent"), "agent:plan");
+    await h.commands.get("agent").handler("ask", h.ctx);
+    assert.equal(h.statuses.get("piexis-agent"), "agent:ask");
   }));
 });
 
@@ -419,15 +554,17 @@ test("runner handles UTF-8 framing, multiple text blocks, tool usage, retries an
   });
 });
 
-test("real Pi CLI delegates to the automatic small model without network or credentials", { timeout: 30_000 }, async () => {
+test("real Pi CLI delegates to automatic and explicit small models without network or credentials", { timeout: 30_000 }, async () => {
   await fixture(async (f) => {
-    for (const orchestrate of [false, true]) {
-      await writeFile(join(f.agentDir, "agents.json"), JSON.stringify({ small_model: "piexis-test/small" }));
+    for (const mode of ["lookup", "orchestrator", "exploration"]) {
+      const orchestrate = mode === "orchestrator";
+      const exploration = mode === "exploration";
+      await writeFile(join(f.agentDir, "agents.json"), JSON.stringify({ small_model: "piexis-test/small", delegate_exploration: true }));
       const invocation = piInvocation();
       const args = [...invocation.args, "--offline", "--no-session", "--mode", "json", "--no-extensions", "--no-skills", "--no-context-files", "--no-prompt-templates",
         "-e", fileURLToPath(new URL("../extensions/agents.ts", import.meta.url)),
         "-e", fileURLToPath(new URL("./fixtures/agents-provider.ts", import.meta.url)),
-        "--model", "piexis-test/main", "--tools", "subagent,read", "--", orchestrate ? "Use orchestrator for a lookup" : "Delegate a lookup"];
+        "--model", "piexis-test/main", "--tools", "subagent,read", "--", orchestrate ? "Use orchestrator for a lookup" : exploration ? "Delegate exploration" : "Delegate a lookup"];
       const executionPromise = promisify(execFile)(invocation.command, args, {
         cwd: f.cwd, env: { ...process.env, PI_CODING_AGENT_DIR: f.agentDir, PIEXIS_SUBAGENT_DEPTH: "0", PI_OFFLINE: "1" },
         timeout: 25_000, maxBuffer: 4 * 1024 * 1024,
@@ -439,7 +576,7 @@ test("real Pi CLI delegates to the automatic small model without network or cred
       assert.ok(execution, stdout);
       assert.equal(execution.isError, false, JSON.stringify(execution));
       assert.equal(execution.result.details.model, orchestrate ? "piexis-test/main" : "piexis-test/small");
-      assert.equal(execution.result.details.reason, orchestrate ? "default subagent" : "automatic small task");
+      assert.equal(execution.result.details.reason, orchestrate ? "default subagent" : exploration ? "configured exploration small model" : "automatic small task");
       if (orchestrate) assert.match(execution.result.details.output, /child:small;depth:2/);
       else assert.equal(execution.result.details.output, "child:small;depth:1");
       assert.equal(execution.result.usage.input, orchestrate ? 30 : 10);

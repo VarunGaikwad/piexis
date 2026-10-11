@@ -1,18 +1,10 @@
-import { link, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { link, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { agentNames, createInitialAgentConfig, effortLevels, type AgentConfig, type AgentName, type Effort } from "./agent-config.ts";
 
-export const agentNames = ["plan", "orchestrator", "debug", "ask", "code"] as const;
-export type AgentName = typeof agentNames[number];
-export const effortLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-export type Effort = typeof effortLevels[number];
-export interface AgentConfig {
-  model?: string;
-  small_model?: string;
-  subagent_model?: string;
-  subagent_variant_overrides?: Partial<Record<AgentName, { model?: string; effort?: Effort }>>;
-}
+export { agentNames, type AgentConfig, type AgentName, effortLevels, type Effort } from "./agent-config.ts";
 
 export const profiles: Record<AgentName, string> = {
   plan: "Explore the request and relevant code, clarify important unknowns, and return an actionable plan with acceptance checks. Do not implement or delegate implementation. Stop after the plan.",
@@ -42,12 +34,20 @@ export function parseAgentConfig(value: unknown): AgentConfig {
   const source = object(value, "Agent configuration");
   const result: AgentConfig = {};
   for (const key of Object.keys(source)) {
-    if (!["model", "small_model", "subagent_model", "subagent_variant_overrides"].includes(key)) {
+    if (!["$schema", "model", "small_model", "subagent_model", "delegate_exploration", "subagent_variant_overrides"].includes(key)) {
       throw new Error(`Unknown agent configuration key: ${key}`);
     }
   }
+  if (source.$schema !== undefined) {
+    if (typeof source.$schema !== "string") throw new Error("$schema must be a string");
+    result.$schema = source.$schema;
+  }
   for (const key of ["model", "small_model", "subagent_model"] as const) {
     if (source[key] !== undefined) result[key] = model(source[key], key);
+  }
+  if (source.delegate_exploration !== undefined) {
+    if (typeof source.delegate_exploration !== "boolean") throw new Error("delegate_exploration must be a boolean");
+    result.delegate_exploration = source.delegate_exploration;
   }
   if (source.subagent_variant_overrides !== undefined) {
     result.subagent_variant_overrides = {};
@@ -110,21 +110,7 @@ export async function initializeAgentConfig(cwd: string, agentDir: string, defau
     if (!defaultModel) throw new Error("No active model; select a model and create .pi/agent.json manually.");
     const inherited = await loadAgentConfig(cwd, agentDir, false);
     const selected = inherited.model ?? model(defaultModel, "Default model");
-    const efforts: Record<AgentName, Effort> = { plan: "high", orchestrator: "high", debug: "high", ask: "low", code: "medium" };
-    const overrides: NonNullable<AgentConfig["subagent_variant_overrides"]> = {};
-    for (const name of agentNames) {
-      overrides[name] = {
-        model: inherited.subagent_model ?? selected,
-        effort: efforts[name],
-        ...inherited.subagent_variant_overrides?.[name],
-      };
-    }
-    const config: AgentConfig = {
-      model: selected,
-      small_model: inherited.small_model ?? selected,
-      subagent_model: inherited.subagent_model ?? selected,
-      subagent_variant_overrides: overrides,
-    };
+    const config = createInitialAgentConfig(selected, inherited);
     signal?.throwIfAborted();
     await mkdir(directory, { recursive: true });
     const temporary = join(directory, `.agent.json.piexis-${randomUUID()}.tmp`);
@@ -140,6 +126,46 @@ export async function initializeAgentConfig(cwd: string, agentDir: string, defau
   });
 }
 
+export async function completeProjectAgentConfig(cwd: string, agentDir: string, defaultModel: string | undefined, signal?: AbortSignal): Promise<"created" | "updated" | "complete"> {
+  const directory = join(cwd, ".pi");
+  let path: string | undefined;
+  for (const name of ["agent.json", "agents.json"]) {
+    const candidate = join(directory, name);
+    try { await lstat(candidate); path = candidate; break; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  if (!path) {
+    if (!await initializeAgentConfig(cwd, agentDir, defaultModel, signal)) return "complete";
+    return "created";
+  }
+  return withFileMutationQueue(path, async () => {
+    signal?.throwIfAborted();
+    if (!(await lstat(path!)).isFile()) throw new Error(`${path} must be a regular file`);
+    const source = parseAgentConfig(JSON.parse(await readFile(path!, "utf8")));
+    const inherited = await loadAgentConfig(cwd, agentDir, false);
+    const selected = source.model ?? inherited.model ?? (defaultModel ? model(defaultModel, "Default model") : undefined);
+    if (!selected) throw new Error("No active model; select a model and configure .pi/agent.json manually.");
+    const defaults = createInitialAgentConfig(selected, inherited);
+    const overrides: NonNullable<AgentConfig["subagent_variant_overrides"]> = {};
+    let changed = Object.keys(defaults).some((key) => source[key as keyof AgentConfig] === undefined);
+    for (const name of agentNames) {
+      const expected = defaults.subagent_variant_overrides![name]!;
+      const actual = source.subagent_variant_overrides?.[name];
+      if (!actual?.model || actual.effort === undefined) changed = true;
+      overrides[name] = { ...expected, ...actual };
+    }
+    if (!changed) return "complete";
+    const config: AgentConfig = { ...defaults, ...source, subagent_variant_overrides: overrides };
+    const temporary = join(directory, `.${basename(path!)}.piexis-${randomUUID()}.tmp`);
+    try {
+      await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+      signal?.throwIfAborted();
+      await rename(temporary, path!);
+      return "updated";
+    } finally { await rm(temporary, { force: true }); }
+  });
+}
+
 export function isSmallTask(agent: AgentName, task: string): boolean {
   // shortcut: conservative text heuristic, replace with evaluated routing if real tasks outgrow it.
   if (task.length > 400 || task.split(/\s+/).length > 65) return false;
@@ -149,7 +175,11 @@ export function isSmallTask(agent: AgentName, task: string): boolean {
   return false;
 }
 
-export function routeSubagent(config: AgentConfig, agent: AgentName, task: string, currentModel: string, currentEffort: Effort) {
+export function routeSubagent(config: AgentConfig, agent: AgentName, task: string, currentModel: string, currentEffort: Effort, exploration = false) {
+  if (exploration) {
+    if (!config.small_model) throw new Error("Exploration delegation requires small_model in agent.json");
+    return { model: config.small_model, effort: "low" as Effort, reason: "configured exploration small model" };
+  }
   const override = config.subagent_variant_overrides?.[agent];
   const small = Boolean(config.small_model && isSmallTask(agent, task) && !override?.model);
   return {
@@ -159,8 +189,10 @@ export function routeSubagent(config: AgentConfig, agent: AgentName, task: strin
   };
 }
 
-export function subagentTools(agent: AgentName, active: string[], depth: number): string[] {
-  if (agent === "plan" || agent === "ask") return active.filter((name) => ["read", "grep", "find", "ls"].includes(name));
+export function subagentTools(agent: AgentName, active: string[], depth: number, allowExplorationDelegation = false): string[] {
+  if (agent === "plan" || agent === "ask") {
+    return active.filter((name) => ["read", "grep", "find", "ls"].includes(name) || (allowExplorationDelegation && depth < 2 && name === "subagent"));
+  }
   return active.filter((name) => name !== "AskQuestion" && (name !== "subagent" || depth < 2));
 }
 

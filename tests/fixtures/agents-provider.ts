@@ -17,11 +17,13 @@ export default function (pi: any) {
         const depth = Number(process.env.PIEXIS_SUBAGENT_DEPTH ?? 0);
         const delegated = depth > 0;
         const orchestration = !delegated && JSON.stringify(last?.content).includes("orchestrator");
+        const exploration = !delegated && JSON.stringify(last?.content).includes("exploration");
         const orchestrator = /Piexis agent profile: orchestrator/.test(context.systemPrompt ?? JSON.stringify(context.messages.filter((message: any) => message.role === "system")));
         const delegate = last?.role === "user" && (!delegated || (depth === 1 && orchestrator));
         const content = delegate
           ? [{ type: "toolCall", id: `delegate-${depth}`, name: "subagent", arguments: {
-            agent: orchestration ? "orchestrator" : "ask", task: orchestration ? "Coordinate a configuration lookup" : "Locate the configuration loader",
+            agent: orchestration ? "orchestrator" : "ask", ...(exploration ? { purpose: "explore" } : {}),
+            task: orchestration ? "Coordinate a configuration lookup" : "Locate the configuration loader",
           } }]
           : [{ type: "text", text: delegated
             ? (orchestrator ? `orchestrated:${JSON.stringify(last?.content)}` : `child:${model.id};depth:${depth}`)

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/VarunGaikwad/piexis/main/schemas/agent.schema.json",
+  "title": "Piexis agent configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema used by editor validation."
+    },
+    "model": { "$ref": "#/$defs/model" },
+    "small_model": { "$ref": "#/$defs/model" },
+    "subagent_model": { "$ref": "#/$defs/model" },
+    "delegate_exploration": {
+      "type": "boolean",
+      "description": "Allow read-only exploration to use small_model."
+    },
+    "subagent_variant_overrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plan": { "$ref": "#/$defs/variant" },
+        "orchestrator": { "$ref": "#/$defs/variant" },
+        "debug": { "$ref": "#/$defs/variant" },
+        "ask": { "$ref": "#/$defs/variant" },
+        "code": { "$ref": "#/$defs/variant" }
+      }
+    }
+  },
+  "$defs": {
+    "model": {
+      "type": "string",
+      "pattern": "^[^\\s/]+/\\S+$",
+      "description": "Exact provider/model ID from /model."
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": { "$ref": "#/$defs/model" },
+        "effort": {
+          "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        }
+      }
+    }
+  }
+}

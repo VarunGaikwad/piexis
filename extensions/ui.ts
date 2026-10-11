@@ -1,9 +1,11 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
+import { agentConfigCapabilities } from "../lib/agent-config.ts";
+import { hasProjectAgentConfig, loadAgentConfig } from "../lib/agents.ts";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -65,6 +67,7 @@ export default function (pi: ExtensionAPI) {
   let activeTool = "";
   let redraw = () => {};
   let remainingTips: typeof tipList = [];
+  let agentSetupTips: string[] = [];
 
   function update() {
     redraw();
@@ -77,6 +80,17 @@ export default function (pi: ExtensionAPI) {
     if (ctx.mode !== "tui") return;
 
     const project = basename(ctx.cwd);
+    agentSetupTips = [];
+    try {
+      if (ctx.isProjectTrusted() && await hasProjectAgentConfig(ctx.cwd)) {
+        const config = await loadAgentConfig(ctx.cwd, getAgentDir(), true);
+        for (const key of Object.keys(agentConfigCapabilities) as (keyof typeof agentConfigCapabilities)[]) {
+          if (config[key] === undefined) agentSetupTips.push(`Agent config: add ${key} to ${agentConfigCapabilities[key]}.`);
+        }
+      }
+    } catch {
+      agentSetupTips = ["Agent config: fix agent.json so PieXis can apply your agent settings."];
+    }
     const selectedTips: typeof tipList = [];
     for (let i = 0; i < Math.min(3, tipList.length); i++) {
       if (remainingTips.length === 0) {
@@ -106,6 +120,7 @@ export default function (pi: ExtensionAPI) {
         const tips = [
           theme.fg("accent", theme.bold("Get started with PieXis")),
           theme.fg("muted", "Questions, skills, prompts & stats."),
+          ...agentSetupTips.map((tip) => theme.fg("warning", tip)),
           ...selectedTips.map((tip) =>
             `${theme.fg("accent", `[${tip.category}]`)} ${theme.fg("muted", tip.text)}`
           ),

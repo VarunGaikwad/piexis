@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import recommendedToolsExtension from "../extensions/recommended-tools.ts";
+import { agentConfigSchemaUrl } from "../lib/agent-config.ts";
 import { hasToolOverrides, readSetupSettings, saveSetupChoice, supportsAdditiveTools, toolsToOffer } from "../lib/recommended-tools.ts";
 
 const base = ["read", "bash", "edit", "write", "AskQuestion"];
@@ -205,7 +206,7 @@ test("automatic startup approval enables immediately, preserves active extension
     const saved = JSON.parse(await readFile(f.projectPath, "utf8"));
     assert.equal(saved.piexis.recommendedTools, "enabled");
     assert.deepEqual(JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8")), {
-      model: "test/default", small_model: "test/default", subagent_model: "test/default",
+      $schema: agentConfigSchemaUrl, model: "test/default", small_model: "test/default", subagent_model: "test/default", delegate_exploration: false,
       subagent_variant_overrides: {
         plan: { model: "test/default", effort: "high" },
         orchestrator: { model: "test/default", effort: "high" },

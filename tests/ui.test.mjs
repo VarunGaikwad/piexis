@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import uiExtension from "../extensions/ui.ts";
 import tipList from "../lib/ui-tips.json" with { type: "json" };
@@ -24,6 +26,7 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
   const ctx = {
     mode,
     cwd: "/projects/demo",
+    isProjectTrusted: () => true,
     model: { id: "gpt-5.4" },
     sessionManager: { getBranch: () => entries, getEntries: () => sessionEntries ?? entries },
     getContextUsage: () => context,
@@ -156,6 +159,34 @@ test("startup header measures styled text without displaying the project name", 
     assert.doesNotMatch(f.header(80).join("\n"), /研究/);
   } finally {
     f.dispose();
+  }
+});
+
+test("startup header explains missing project agent configuration", async () => {
+  const root = await mkdtemp(join(tmpdir(), "piexis-ui-agent-config-"));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  try {
+    const agentDir = join(root, "agent");
+    await mkdir(agentDir);
+    await mkdir(join(root, ".pi"));
+    await writeFile(join(root, ".pi", "agent.json"), JSON.stringify({ model: "test/main" }));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    const f = fixture();
+    f.ctx.cwd = root;
+    await f.emit("session_start");
+    try {
+      const text = f.header(200).join("\n");
+      assert.match(text, /Agent config: add small_model to use a cheaper model for eligible small tasks\./);
+      assert.match(text, /Agent config: add delegate_exploration to opt in to cheap, read-only codebase exploration\./);
+      assert.doesNotMatch(text, /Agent config: add model/);
+      for (let width = 1; width <= 200; width++) {
+        for (const line of f.header(width)) assert.ok(visibleWidth(line) <= width);
+      }
+    } finally { f.dispose(); }
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(root, { recursive: true, force: true });
   }
 });
 
