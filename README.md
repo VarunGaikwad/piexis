@@ -8,7 +8,7 @@ PieXis is a Pi package with interactive questions, coding skills, prompts, and t
 pi install npm:@preapexis/piexis
 ```
 
-Restart Pi or run `/reload` after installation. The package loads AskQuestion, agent profiles/subagents, the custom header/footer, automatic recommended-tool setup, prompts, skills, and the theme.
+Restart Pi or run `/reload` after installation. The package loads AskQuestion, agent profiles/subagents, the custom header/footer, automatic recommended-tool setup, prompts, skills, and themes.
 
 ## Resources
 
@@ -19,7 +19,7 @@ Restart Pi or run `/reload` after installation. The package loads AskQuestion, a
 - **Skills** cover implementation, debugging, review, design, refactoring, validation, and document workflows. Bundled **caveman** adds concise chat style; **ponytail** guides the smallest complete coding change. Only their core instructions are included, not upstream hooks or companion skills. Source revisions and licenses live beside each skill.
 - **Prompts** include `/init`, `/commit`, and `/summary`. `/init` adds workflow guidance to `AGENTS.md`: caveman for responses, grilling for clarification questions, and ponytail for building. These are agent instructions, not runtime enforcement.
 
-- **Theme** provides the bundled orange palette.
+- **Themes** include warm **orange** and **midnight**, a dark slate palette with cyan, violet, and mint accents. Run `/reload`, then choose a palette in `/settings` → **Theme**.
 
 Caveman and ponytail ship with this package; no separate installation is needed. Their upstream standalone installation commands are:
 
@@ -109,6 +109,26 @@ Pi owns stdin, raw mode, cursor state, and focus restoration. Agent abort and se
 PieXis no longer provides permission modes, tool approvals, classifier review, plan-to-execution handoffs, filtered search, or background worktree tasks. Their commands, shortcuts, flags, and configuration initialization have been removed. Tool execution follows Pi and any other installed extensions; PieXis does not provide sandboxing or access restrictions.
 
 Existing `piexis` settings, legacy configuration files, session records, and retained task worktrees are not deleted automatically. Old classifier, execution-model, and background-model settings are no longer read. Remove obsolete configuration manually if desired, preserving unrelated settings and any work you need. Remove explicit references to deleted extensions from your Pi resource settings or launch arguments.
+
+## PIXIS WebUI (preview)
+
+PIXIS 2.0 adds a local WebUI without replacing the Pi TUI. Each browser session observes a backend-owned, long-lived Pi RPC process. After installing or updating Piexis, start Pi inside the project and run:
+
+```text
+/webui
+```
+
+Pi displays a local URL containing a per-launch access token; open that URL in a browser. The TUI remains usable. The package also exposes a PowerShell-friendly command for starting outside Pi:
+
+```powershell
+piexis-web --workspace C:\path\to\your-project
+```
+
+The server uses the requested workspace and starts Pi with documented `--mode rpc`. Pi must be installed, authenticated, and available as `pi` (or set `PIXIS_PI_BIN`). Use `.env.example` as the configuration reference. `npm run dev` remains available only for developing Piexis itself and serves the Vite development client on port 5173.
+
+The current preview supports genuine streamed assistant text, tool lifecycle cards, abort, Pi extension dialog forwarding, multiple observed backend sessions, and read-only Git status. It binds the agent server to `127.0.0.1`, requires a per-launch token and exact browser origin, validates WebSocket messages, confines file paths before Git diffs, and never sends secrets to the browser. Localhost alone is not treated as authentication.
+
+Current limitations: session list is limited to sessions created in the WebUI process (it does not yet enumerate historical Pi session files); file explorer, Monaco editor/diff rendering, and terminal panel are planned; Git controls are read-only. The existing Pi TUI remains unchanged and can run separately.
 
 ## Select package resources
 
