@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>PieXis</title>
+  <desc>A warm orange and ivory coding X on a rounded midnight terminal tile.</desc>
+  <rect width="64" height="64" rx="16" fill="#111827"/>
+  <path d="M19 19 32 32 19 45" stroke="#FF914D" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M45 19 32 32 45 45" stroke="#FFF1DE" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

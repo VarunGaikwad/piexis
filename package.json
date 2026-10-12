@@ -1,6 +1,6 @@
 {
   "name": "@preapexis/piexis",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "description": "Extensions, skills, prompts, and themes for pi",
   "repository": {
@@ -64,19 +64,29 @@
     ]
   },
   "devDependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "24.10.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "^4.3.3",
     "typescript": "5.9.3",
     "vite": "^8.3.4"
   },
   "dependencies": {
     "@fastify/static": "^10.1.6",
     "@fastify/websocket": "^11.3.4",
+    "@radix-ui/react-dialog": "^1.2.0",
+    "@radix-ui/react-tabs": "^1.1.22",
+    "clsx": "^2.1.1",
     "fastify": "^5.12.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.7.0",
     "tsx": "^4.23.15",
     "zod": "^4.6.5"
   }

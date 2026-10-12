@@ -1,55 +1,138 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
+import { StrictMode, type ReactNode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Composer } from "./components/composer.tsx";
+import { MenuIcon, PanelIcon, XIcon } from "./components/icons.tsx";
+import { ContextSidebar, SessionSidebar } from "./components/sidebar.tsx";
+import { Transcript } from "./components/transcript.tsx";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./components/ui.tsx";
+import { WorkspaceDialog } from "./components/workspace-dialog.tsx";
+import { usePixis } from "./hooks/use-pixis.ts";
+import { type SessionView } from "./lib/workspace-state.ts";
+import "./fonts.css";
 import "./styles.css";
 
-type Session = { id: string; name: string; status: string; model?: string };
-type Message = { role?: string; content?: unknown; timestamp?: number };
-type Tool = { id: string; name: string; args?: unknown; result?: unknown; error?: boolean; running?: boolean };
-type UiRequest = { id: string; method: "confirm" | "select" | "input" | "editor"; title?: string; message?: string; options?: string[]; prefill?: string };
-const text = (content: unknown): string => typeof content === "string" ? content : Array.isArray(content) ? content.filter((x): x is { type: string; text?: string } => !!x && typeof x === "object").map(x => x.text || "").join("\n") : "";
+const blankView: SessionView = { messages: [], stream: "", tools: [] };
+type Panel = "sessions" | "context" | "";
+
+type PanelSheetProps = {
+  panel: Exclude<Panel, "">;
+  open: boolean;
+  onOpenChange(open: boolean): void;
+  onCloseFocus(): void;
+  children: ReactNode;
+};
+
+function PanelSheet({ panel, open, onOpenChange, onCloseFocus, children }: PanelSheetProps) {
+  const title = panel === "sessions" ? "Sessions" : "Workspace";
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={`panel-sheet ${panel}-sheet`} aria-describedby={`${panel}-sheet-description`} onCloseAutoFocus={(event) => { event.preventDefault(); onCloseFocus(); }}>
+        <div className="dialog-heading">
+          <div>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription id={`${panel}-sheet-description`} className="dialog-description">PIXIS {title.toLowerCase()} panel</DialogDescription>
+          </div>
+          <DialogClose className="icon-button" aria-label={`Close ${title.toLowerCase()}`}><XIcon /></DialogClose>
+        </div>
+        {children}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function App() {
-  const [sessions, setSessions] = useState<Session[]>([]); const [active, setActive] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]); const [draft, setDraft] = useState(""); const [stream, setStream] = useState("");
-  const [tools, setTools] = useState<Tool[]>([]); const [connected, setConnected] = useState(false); const [error, setError] = useState("");
-  const [git, setGit] = useState<{ branch: string; files: { status: string; path: string }[] }>(); const [dialog, setDialog] = useState<UiRequest>();
-  const socket = useRef<WebSocket | null>(null); const activeRef = useRef(active); activeRef.current = active; const current = sessions.find(s => s.id === active); const running = current?.status === "running" || current?.status === "cancelling";
-  const send = (value: unknown) => socket.current?.readyState === WebSocket.OPEN && socket.current.send(JSON.stringify(value));
+  const { state, connected, send, markPromptSent, clearError, clearDialog } = usePixis();
+  const [panel, setPanel] = useState<Panel>("");
+  const [hideSessions, setHideSessions] = useState(false);
+  const [hideContext, setHideContext] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const transcript = useRef<HTMLDivElement>(null);
+  const followTranscript = useRef(true);
+  const sessionsTrigger = useRef<HTMLButtonElement>(null);
+  const contextTrigger = useRef<HTMLButtonElement>(null);
+  const request = state.dialogs[state.activeId];
+  const current = state.sessions.find((session) => session.id === state.activeId);
+  const view = state.views[state.activeId] || blankView;
+  const running = current?.status === "running" || current?.status === "cancelling";
+  const cancelling = current?.status === "cancelling";
+  const canSend = connected && current?.status === "ready";
+
   useEffect(() => {
-    const token = new URLSearchParams(location.hash.slice(1)).get("token") || import.meta.env.VITE_PIXIS_TOKEN || "";
-    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?token=${encodeURIComponent(token)}`); socket.current = ws;
-    ws.onopen = () => { setConnected(true); send({ type: "list_sessions" }); };
-    ws.onclose = (event) => { setConnected(false); setError(event.reason || "Connection to the PIXIS local server closed. Run /webui again and open its new URL."); };
-    ws.onerror = () => setError("Could not connect to the PIXIS local server. Confirm that /webui started successfully, then open the URL it displayed.");
-    ws.onmessage = ({ data }) => {
-      const item = JSON.parse(data);
-      if (item.type === "error") return setError(item.message);
-      if (item.type === "snapshot") { setSessions(item.sessions); if (item.sessionId) { setActive(item.sessionId); setMessages(item.messages); setStream(""); } else send({ type: "create_session" }); return; }
-      if (item.type === "session") return setSessions(prev => [...prev.filter(s => s.id !== item.session.id), item.session]);
-      if (item.type === "extension_ui") return setDialog(item.request);
-      if (item.type === "workspace") { if (item.action === "git_status") setGit(item.data); return; }
-      if (item.type !== "pi_event" || item.sessionId !== activeRef.current) return;
-      const event = item.event;
-      if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") setStream(prev => prev + event.assistantMessageEvent.delta);
-      if (event.type === "message_end" && event.message?.role === "assistant") { setMessages(prev => [...prev, event.message]); setStream(""); }
-      if (event.type === "tool_execution_start") setTools(prev => [...prev, { id: event.toolCallId, name: event.toolName, args: event.args, running: true }]);
-      if (event.type === "tool_execution_end") setTools(prev => prev.map(tool => tool.id === event.toolCallId ? { ...tool, result: event.result, error: event.isError, running: false } : tool));
-      if (event.type === "runtime_error") setError(event.message);
-    };
-    return () => ws.close();
-  }, []);
-  const submit = () => { if (!draft.trim() || !active || running) return; setMessages(prev => [...prev, { role: "user", content: draft }]); send({ type: "prompt", sessionId: active, message: draft }); setDraft(""); };
-  const respond = (value?: string, confirmed?: boolean, cancelled?: boolean) => { if (dialog && active) send({ type: "extension_ui_response", sessionId: active, id: dialog.id, value, confirmed, cancelled }); setDialog(undefined); };
-  const activity = useMemo(() => tools.slice(-8).reverse(), [tools]);
-  return <main className="shell">
-    <aside className="sidebar"><header className="brand"><span>✦</span> PIXIS <small>2.0</small></header><button className="new" onClick={() => send({ type: "create_session" })}>+ New session</button><div className="section-label">SESSIONS</div><nav>{sessions.map(s => <button className={`session ${s.id === active ? "active" : ""}`} key={s.id} onClick={() => send({ type: "subscribe", sessionId: s.id })}><span>{s.name}</span><i className={s.status}/></button>)}</nav><footer><span className="online">●</span> {connected ? "Local runtime" : "Reconnecting…"}</footer></aside>
-    <section className="conversation"><header className="topbar"><div><strong>{current?.name || "Starting PIXIS"}</strong><span>{current?.model || "Pi session"}</span></div><button className="ghost" onClick={() => active && send({ type: "git_status", sessionId: active })}>Refresh workspace</button></header>
-      <div className="messages">{messages.length === 0 && !stream && <div className="empty"><b>Ready when you are.</b><p>Ask PIXIS to understand, change, or review this workspace.</p></div>}{messages.map((m, i) => <article key={i} className={`message ${m.role === "user" ? "user" : "assistant"}`}><label>{m.role === "user" ? "YOU" : "PIXIS"}</label><pre>{text(m.content)}</pre></article>)}{stream && <article className="message assistant"><label>PIXIS · streaming</label><pre>{stream}</pre></article>}</div>
-      {error && <div className="error">{error}<button onClick={() => setError("")}>×</button></div>}<div className="composer"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} placeholder="Message PIXIS…" aria-label="Message PIXIS"/><div><span>{current?.model || "No model selected"}</span>{running ? <button className="stop" onClick={() => send({ type: "abort", sessionId: active })}>Stop</button> : <button onClick={submit} disabled={!draft.trim() || !connected}>Send ↵</button>}</div></div>
-    </section>
-    <aside className="context"><header>WORKSPACE</header><div className="branch">⎇ {git?.branch || "Refresh to inspect Git"}</div><div className="section-label">CHANGED FILES</div>{git?.files.length ? git.files.map(file => <button className="file" key={file.path}><b>{file.status}</b>{file.path}</button>) : <p className="muted">No changed files loaded.</p>}<div className="section-label">AGENT ACTIVITY</div>{activity.length ? activity.map(tool => <details key={tool.id} open={tool.running}><summary><i className={tool.error ? "failed" : tool.running ? "running" : "done"}/>{tool.name}<small>{tool.running ? "Running" : tool.error ? "Failed" : "Done"}</small></summary><pre>{JSON.stringify(tool.result ?? tool.args, null, 2)}</pre></details>) : <p className="muted">Tool calls appear here as Pi executes them.</p>}</aside>
-    {dialog && <div className="modal"><div><h2>{dialog.title}</h2><p>{dialog.message}</p>{dialog.method === "select" ? <div>{dialog.options?.map(option => <button key={option} onClick={() => respond(option)}>{option}</button>)}</div> : dialog.method === "confirm" ? <div><button onClick={() => respond(undefined, true)}>Confirm</button><button className="ghost" onClick={() => respond(undefined, false)}>Cancel</button></div> : <DialogInput request={dialog} onSubmit={value => respond(value)} onCancel={() => respond(undefined, undefined, true)}/>}</div></div>}
-  </main>;
+    followTranscript.current = true;
+    if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
+  }, [state.activeId]);
+  useEffect(() => {
+    if (followTranscript.current && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
+  }, [view.messages, view.stream]);
+
+  const subscribe = (sessionId: string) => {
+    if (send({ type: "subscribe", sessionId })) setPanel("");
+  };
+  const prompt = (message: string) => {
+    if (!state.activeId || !canSend) return false;
+    const sent = send({ type: "prompt", sessionId: state.activeId, message });
+    if (sent) markPromptSent(state.activeId);
+    return sent;
+  };
+  const refresh = () => {
+    if (state.activeId) send({ type: "git_status", sessionId: state.activeId });
+  };
+  const newSession = () => {
+    if (send({ type: "create_session" })) setPanel("");
+  };
+
+  return (
+    <main className={`shell ${hideSessions ? "hide-sessions" : ""} ${hideContext ? "hide-context" : ""}`}>
+      <SessionSidebar sessions={state.sessions} activeId={state.activeId} connected={connected} pendingSessionIds={Object.keys(state.dialogs)} onNew={newSession} onSelect={subscribe} />
+      <section className="conversation">
+        <header className="topbar">
+          <button ref={sessionsTrigger} className="panel-toggle sessions-toggle" onClick={() => setPanel("sessions")} aria-label="Open sessions"><MenuIcon /><span>Sessions</span></button>
+          <button className="panel-toggle desktop-sessions-toggle" onClick={() => setHideSessions(!hideSessions)} aria-label={`${hideSessions ? "Show" : "Hide"} sessions`} aria-expanded={!hideSessions}><MenuIcon /></button>
+          <div>
+            <strong>{current?.name || "Starting PIXIS"}</strong>
+            <span>{current?.model || "Pi session"} · {current?.status || "connecting"}</span>
+          </div>
+          <button ref={contextTrigger} className="panel-toggle context-toggle" onClick={() => setPanel("context")} aria-label="Open workspace"><PanelIcon /><span>Workspace</span></button>
+          <button className="panel-toggle desktop-context-toggle" onClick={() => setHideContext(!hideContext)} aria-label={`${hideContext ? "Show" : "Hide"} workspace`} aria-expanded={!hideContext}><PanelIcon /></button>
+        </header>
+        <div ref={transcript} className="messages" onScroll={(event) => {
+          const element = event.currentTarget;
+          followTranscript.current = element.scrollHeight - element.scrollTop - element.clientHeight < 64;
+        }}><Transcript messages={view.messages} stream={view.stream} /></div>
+        {state.error && <div className="error" role="alert">{state.error}<button onClick={clearError} aria-label="Dismiss error"><XIcon /></button></div>}
+        <Composer
+          connected={connected}
+          canSend={canSend}
+          running={running}
+          cancelling={cancelling}
+          model={current?.model}
+          draft={drafts[state.activeId] || ""}
+          onDraftChange={(value) => setDrafts((previous) => ({ ...previous, [state.activeId]: value }))}
+          onSend={prompt}
+          onStop={() => state.activeId && send({ type: "abort", sessionId: state.activeId })}
+        />
+      </section>
+      <ContextSidebar view={view} canRefresh={connected && !!state.activeId} onRefresh={refresh} />
+      <PanelSheet panel="sessions" open={panel === "sessions"} onOpenChange={(open) => setPanel(open ? "sessions" : "")} onCloseFocus={() => sessionsTrigger.current?.focus()}>
+        <SessionSidebar className="sheet-sidebar" sessions={state.sessions} activeId={state.activeId} connected={connected} pendingSessionIds={Object.keys(state.dialogs)} onNew={newSession} onSelect={subscribe} />
+      </PanelSheet>
+      <PanelSheet panel="context" open={panel === "context"} onOpenChange={(open) => setPanel(open ? "context" : "")} onCloseFocus={() => contextTrigger.current?.focus()}>
+        <ContextSidebar className="sheet-sidebar" view={view} canRefresh={connected && !!state.activeId} onRefresh={refresh} />
+      </PanelSheet>
+      {request && (
+        <WorkspaceDialog
+          key={`${state.activeId}-${request.id}`}
+          request={request}
+          sessionId={state.activeId}
+          connected={connected}
+          onDismiss={() => clearDialog(state.activeId)}
+          onRespond={(value, confirmed, cancelled) => {
+            if (send({ type: "extension_ui_response", sessionId: state.activeId, id: request.id, value, confirmed, cancelled })) clearDialog(state.activeId);
+          }}
+        />
+      )}
+    </main>
+  );
 }
-function DialogInput({ request, onSubmit, onCancel }: { request: UiRequest; onSubmit(value: string): void; onCancel(): void }) { const [value, setValue] = useState(request.prefill || ""); return <><textarea value={value} onChange={e => setValue(e.target.value)}/><button onClick={() => onSubmit(value)}>Submit</button><button className="ghost" onClick={onCancel}>Cancel</button></>; }
-createRoot(document.getElementById("root")!).render(<StrictMode><App/></StrictMode>);
+
+createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);

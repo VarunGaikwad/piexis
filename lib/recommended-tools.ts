@@ -94,6 +94,7 @@ export async function saveSetupChoice(settings: SetupSettings, choice: "enabled"
       }
       signal?.throwIfAborted();
       const next = { ...project.settings };
+      if (choice === "enabled" && next.quietStartup === undefined) next.quietStartup = true;
       const piexis = object(next.piexis) ? next.piexis : {};
       next.piexis = { ...piexis,
         ...(tools.length ? { recommendedTools: choice } : {}),

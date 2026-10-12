@@ -93,7 +93,7 @@ export default function agentsExtension(pi: ExtensionAPI) {
   });
   pi.on("session_tree", (_event, ctx) => restore(ctx));
 
-  pi.registerCommand("agent-config", {
+  pi.registerCommand("setup-agents", {
     description: "Fill missing project agent.json settings with defaults without replacing configured values",
     handler: async (_args, ctx) => {
       await ctx.waitForIdle();
@@ -111,13 +111,13 @@ export default function agentsExtension(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("agent", {
+  pi.registerCommand("profile", {
     description: "Switch agent profile (plan, orchestrator, debug, ask, code)",
     handler: async (args, ctx) => {
       await ctx.waitForIdle();
       let name: string | undefined = args.trim() || undefined;
       if (!name) {
-        if (!ctx.hasUI) { ctx.ui.notify(`Current agent: ${active}. Use /agent <${agentNames.join("|")}>.`, "info"); return; }
+        if (!ctx.hasUI) { ctx.ui.notify(`Current agent: ${active}. Use /profile <${agentNames.join("|")}>.`, "info"); return; }
         name = await ctx.ui.select(`Agent profile (current: ${active})`, [...agentNames]);
         if (!name) return;
       }

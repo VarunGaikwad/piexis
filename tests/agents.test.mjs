@@ -143,11 +143,11 @@ test("opt-in agent scaffold uses the active model, restrictive permissions and a
   });
 });
 
-test("agent-config command fills only missing project settings", async () => {
+test("setup-agents command fills only missing project settings", async () => {
   await fixture(async (f) => environment(f, async () => {
     await writeFile(join(f.cwd, ".pi", "agent.json"), JSON.stringify({ model: "test/custom", delegate_exploration: true }));
     const h = harness(f);
-    await h.commands.get("agent-config").handler("", h.ctx);
+    await h.commands.get("setup-agents").handler("", h.ctx);
     const config = JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8"));
     assert.equal(config.$schema, agentConfigSchemaUrl);
     assert.equal(config.model, "test/custom");
@@ -156,7 +156,7 @@ test("agent-config command fills only missing project settings", async () => {
     assert.equal(config.subagent_model, "test/custom");
     assert.equal(config.subagent_variant_overrides.code.model, "test/custom");
     assert.match(h.notifications.at(-1)[0], /Added missing/);
-    await h.commands.get("agent-config").handler("", h.ctx);
+    await h.commands.get("setup-agents").handler("", h.ctx);
     assert.match(h.notifications.at(-1)[0], /already complete/);
   }));
 });
@@ -304,11 +304,22 @@ test("configured exploration always uses the small model and stays read-only", a
   }));
 });
 
+test("profile command without UI advertises the renamed command", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    const h = harness(f);
+    h.ctx.hasUI = false;
+    await h.commands.get("profile").handler("", h.ctx);
+    assert.equal(h.notifications.at(-1)[0], `Current agent: code. Use /profile <${agentNames.join("|")}>.`);
+    assert.equal(h.states.length, 0);
+  }));
+});
+
 test("profile commands cancel cleanly, inject instructions, persist and restore branch state", async () => {
   await fixture(async (f) => environment(f, async () => {
     const h = harness(f);
     await h.start();
-    const command = h.commands.get("agent");
+    const command = h.commands.get("profile");
+    assert.deepEqual([...h.commands.keys()].sort(), ["profile", "setup-agents"]);
     const prompt = () => h.handlers.get("before_agent_start")({ systemPrompt: "base" }, h.ctx).systemPrompt;
     await command.handler("", h.ctx);
     assert.equal(h.states.length, 0);
@@ -356,7 +367,7 @@ test("Alt+A cycles all profiles, persists the selection and respects busy/non-TU
       assert.equal(h.states.length, count);
     }
     h.ctx.mode = "tui";
-    await h.commands.get("agent").handler("debug", h.ctx);
+    await h.commands.get("profile").handler("debug", h.ctx);
     await shortcut.handler(h.ctx);
     assert.equal(h.statuses.get("piexis-agent"), "agent:ask");
     h.states.pop();
@@ -385,15 +396,15 @@ test("commands, picker and cycling apply merged profile models and effort", asyn
     assert.equal(h.mainModel.id, "planner");
     assert.equal(h.effort, "low");
     assert.equal(h.statuses.get("piexis-agent"), "agent:plan");
-    await h.commands.get("agent").handler("debug", h.ctx);
+    await h.commands.get("profile").handler("debug", h.ctx);
     assert.equal(h.mainModel.id, "main");
     assert.equal(h.effort, "max");
     h.ctx.ui.select = async () => "ask";
-    await h.commands.get("agent").handler("", h.ctx);
+    await h.commands.get("profile").handler("", h.ctx);
     assert.equal(h.mainModel.id, "answer");
     assert.equal(h.effort, "off");
     h.ctx.isProjectTrusted = () => false;
-    await h.commands.get("agent").handler("plan", h.ctx);
+    await h.commands.get("profile").handler("plan", h.ctx);
     assert.equal(h.mainModel.id, "planner");
     assert.equal(h.effort, "high");
   }));
@@ -402,17 +413,17 @@ test("commands, picker and cycling apply merged profile models and effort", asyn
 test("unconfigured profile fields leave current settings alone", async () => {
   await fixture(async (f) => environment(f, async () => {
     const h = harness(f);
-    await h.commands.get("agent").handler("plan", h.ctx);
+    await h.commands.get("profile").handler("plan", h.ctx);
     assert.equal(h.mainModel, undefined);
     assert.equal(h.effort, undefined);
     await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({
       small_model: "test/small", subagent_model: "test/worker",
       subagent_variant_overrides: { ask: { effort: "low" }, code: { model: "test/coder" } },
     }));
-    await h.commands.get("agent").handler("ask", h.ctx);
+    await h.commands.get("profile").handler("ask", h.ctx);
     assert.equal(h.mainModel, undefined);
     assert.equal(h.effort, "low");
-    await h.commands.get("agent").handler("code", h.ctx);
+    await h.commands.get("profile").handler("code", h.ctx);
     assert.equal(h.mainModel.id, "coder");
     assert.equal(h.effort, "low");
   }));
@@ -426,7 +437,7 @@ test("failed profile switches preserve model, effort and profile and release the
     await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({
       subagent_variant_overrides: { code: { model: "test/coder", effort: "medium" } },
     }));
-    await h.commands.get("agent").handler("code", h.ctx);
+    await h.commands.get("profile").handler("code", h.ctx);
     const count = h.states.length;
     for (const value of ["{bad", ...["missing", "unauthenticated"].map((id) => JSON.stringify({
       subagent_variant_overrides: { plan: { model: `test/${id}`, effort: "max" } },
@@ -440,10 +451,10 @@ test("failed profile switches preserve model, effort and profile and release the
       assert.equal(h.notifications.at(-1)[1], "warning");
     }
     await writeFile(join(f.agentDir, "agent.json"), "{}");
-    await Promise.all([h.shortcuts.get("alt+a").handler(h.ctx), h.commands.get("agent").handler("ask", h.ctx)]);
+    await Promise.all([h.shortcuts.get("alt+a").handler(h.ctx), h.commands.get("profile").handler("ask", h.ctx)]);
     assert.equal(h.states.length, count + 1);
     assert.equal(h.statuses.get("piexis-agent"), "agent:plan");
-    await h.commands.get("agent").handler("ask", h.ctx);
+    await h.commands.get("profile").handler("ask", h.ctx);
     assert.equal(h.statuses.get("piexis-agent"), "agent:ask");
   }));
 });
@@ -477,7 +488,7 @@ test("footer reads live agent status after commands, cycling and tree restoratio
           for (const row of rows) assert.ok(visibleWidth(row) <= width);
         }
       }
-      await h.commands.get("agent").handler("debug", h.ctx);
+      await h.commands.get("profile").handler("debug", h.ctx);
       assert.match(footer.render(160).join("\n"), /agent:debug/);
       h.states.pop();
       h.handlers.get("session_tree")({}, h.ctx);

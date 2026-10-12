@@ -85,7 +85,19 @@ test("fresh projects use additive configuration, with a valid plain-list fallbac
       await saveSetupChoice(await readSetupSettings(f.cwd, f.agentDir), "enabled", recommended, additive);
       const saved = JSON.parse(await readFile(f.projectPath, "utf8"));
       assert.deepEqual(saved.defaultTools, additive ? ["+grep", "+find", "+ls"] : [...base.slice(0, 4), ...recommended]);
+      assert.equal(saved.quietStartup, true);
       assert.equal((await stat(f.projectPath)).mode & 0o777, 0o600);
+    });
+  }
+});
+
+test("enable preserves explicit project quietStartup values", async () => {
+  for (const quietStartup of [false, true, "header"]) {
+    await fixture(async (f) => {
+      await f.project({ quietStartup });
+      await saveSetupChoice(await readSetupSettings(f.cwd, f.agentDir), "enabled", recommended, true);
+      const saved = JSON.parse(await readFile(f.projectPath, "utf8"));
+      assert.equal(saved.quietStartup, quietStartup);
     });
   }
 });
@@ -97,6 +109,7 @@ test("Don't ask again records only a project preference and leaves defaultTools 
     const saved = JSON.parse(await readFile(f.projectPath, "utf8"));
     assert.deepEqual(saved.defaultTools, ["-find"]);
     assert.equal(saved.theme, "orange");
+    assert.equal(saved.quietStartup, undefined);
     assert.equal(saved.piexis.recommendedTools, "disabled");
     assert.deepEqual(toolsToOffer(await readSetupSettings(f.cwd, f.agentDir), recommended, base, true), []);
   });
@@ -205,6 +218,7 @@ test("automatic startup approval enables immediately, preserves active extension
     assert.equal(h.notifications[0][1], "info");
     const saved = JSON.parse(await readFile(f.projectPath, "utf8"));
     assert.equal(saved.piexis.recommendedTools, "enabled");
+    assert.equal(saved.quietStartup, true);
     assert.deepEqual(JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8")), {
       $schema: agentConfigSchemaUrl, model: "test/default", small_model: "test/default", subagent_model: "test/default", delegate_exploration: false,
       subagent_variant_overrides: {
@@ -276,7 +290,7 @@ test("agent-only approval preserves restrictive and older tool policies, includi
       const original = { defaultTools: [], piexis: { recommendedTools: "disabled" }, other: 42 };
       await f.project(original);
       await saveSetupChoice(await readSetupSettings(f.cwd, f.agentDir), "enabled", [], additive, undefined, "enabled");
-      assert.deepEqual(JSON.parse(await readFile(f.projectPath, "utf8")), { ...original, piexis: { ...original.piexis, agentSetup: "enabled" } });
+      assert.deepEqual(JSON.parse(await readFile(f.projectPath, "utf8")), { ...original, quietStartup: true, piexis: { ...original.piexis, agentSetup: "enabled" } });
     });
   }
   await fixture(async (f) => environment(f, async () => {
@@ -286,7 +300,7 @@ test("agent-only approval preserves restrictive and older tool policies, includi
     assert.equal(h.prompts, 1);
     assert.equal(h.activations, 0);
     assert.deepEqual(JSON.parse(await readFile(f.projectPath, "utf8")), {
-      defaultTools: [], piexis: { recommendedTools: "disabled", agentSetup: "enabled" }
+      defaultTools: [], quietStartup: true, piexis: { recommendedTools: "disabled", agentSetup: "enabled" }
     });
     assert.equal(JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8")).model, "test/default");
   }));
