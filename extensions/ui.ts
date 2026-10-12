@@ -169,7 +169,7 @@ export default function (pi: ExtensionAPI) {
 
           let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
           for (const entry of ctx.sessionManager.getBranch()) {
-            if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+            if (entry.type !== "message" || (entry.message.role !== "assistant" && entry.message.role !== "toolResult")) continue;
             const u = entry.message.usage;
             if (!u) continue;
             input += u.input;
@@ -183,14 +183,22 @@ export default function (pi: ExtensionAPI) {
           const activity = state === "tool" ? `${frame} ${activeTool}`
             : state === "thinking" ? `${frame} thinking` : "● ready";
           const agent = footerData.getExtensionStatuses?.().get("piexis-agent");
+          const agentMode = footerData.getExtensionStatuses?.().get("piexis-agent-mode");
           const branch = footerData.getGitBranch();
           // Reserve a small model slot; long tool names must not displace the profile.
           const modelReserve = width >= 32 ? 9 : 0;
-          const profile = agent && visibleWidth(agent) + 6 + modelReserve <= width
-            ? theme.fg("accent", agent) + sep : "";
-          const activityWidth = Math.max(1, Math.min(24, width - visibleWidth(profile) - modelReserve));
-          const left1 = profile + theme.fg(state === "ready" ? "success" : "accent",
-            truncateToWidth(activity, activityWidth, "…"));
+          const fullProfile = agent && agentMode ? `${agent} (${agentMode})` : agent ?? "";
+          // Mode is optional; the profile itself remains ahead of activity and right-side fields.
+          const profileText = agent && width >= 48 && visibleWidth(fullProfile) + 6 + modelReserve <= width
+            ? fullProfile
+            : agent ?? "";
+          const profileLimit = Math.max(0, width - 1);
+          const profile = profileText
+            ? theme.fg("accent", truncateToWidth(profileText, profileLimit, "…")) + (profileLimit > 0 ? sep : "")
+            : "";
+          const activityWidth = Math.max(0, Math.min(24, width - visibleWidth(profile) - modelReserve));
+          const left1 = profile + (activityWidth ? theme.fg(state === "ready" ? "success" : "accent",
+            truncateToWidth(activity, activityWidth, "…")) : "");
           const row1 = justify(left1, [
             { text: ctx.model?.id ?? "—", priority: 5 },
             { text: muted(`think ${pi.getThinkingLevel()}`), priority: 4 },
@@ -224,7 +232,10 @@ export default function (pi: ExtensionAPI) {
             { text: muted(costText), priority: 3 }
           ], sep, width);
 
-          return [row1, row2];
+          const children = footerData.getExtensionStatuses?.().get("piexis-subagents");
+          return children
+            ? [row1, row2, theme.fg("accent", truncateToWidth(children, width, "…"))]
+            : [row1, row2];
         },
 
         dispose() {

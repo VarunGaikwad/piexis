@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url";
 import agentsExtension from "../extensions/agents.ts";
 import uiExtension from "../extensions/ui.ts";
 import { matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import { agentNames, childResourceArgs, initializeAgentConfig, isSmallTask, loadAgentConfig, parseAgentConfig, routeSubagent, subagentTools } from "../lib/agents.ts";
-import { agentConfigSchemaUrl } from "../lib/agent-config.ts";
+import { agentNames, childResourceArgs, detectProfileIntent, initializeAgentConfig, isSmallTask, loadAgentConfig, parseAgentConfig, routeSubagent, subagentTools } from "../lib/agents.ts";
+import { agentConfigCapabilities, agentConfigSchemaUrl } from "../lib/agent-config.ts";
 import { emptyUsage, limitOutput, piInvocation, runSubagent } from "../lib/subagent-runner.ts";
 
 async function fixture(work) {
@@ -32,14 +32,15 @@ async function fixture(work) {
 }
 
 async function environment(f, work) {
-  const argv = process.argv, dir = process.env.PI_CODING_AGENT_DIR, depth = process.env.PIEXIS_SUBAGENT_DEPTH;
+  const argv = process.argv, dir = process.env.PI_CODING_AGENT_DIR, depth = process.env.PIEXIS_SUBAGENT_DEPTH, scope = process.env.PIEXIS_SUBAGENT_SCOPE;
   process.argv = [process.execPath, f.cli];
   process.env.PI_CODING_AGENT_DIR = f.agentDir;
   delete process.env.PIEXIS_SUBAGENT_DEPTH;
+  delete process.env.PIEXIS_SUBAGENT_SCOPE;
   try { await work(); }
   finally {
     process.argv = argv;
-    for (const [key, value] of [["PI_CODING_AGENT_DIR", dir], ["PIEXIS_SUBAGENT_DEPTH", depth]]) {
+    for (const [key, value] of [["PI_CODING_AGENT_DIR", dir], ["PIEXIS_SUBAGENT_DEPTH", depth], ["PIEXIS_SUBAGENT_SCOPE", scope]]) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
@@ -53,12 +54,12 @@ function harness(f, flag) {
     registerCommand(name, command) { commands.set(name, command); }, registerTool(value) { tool = value; },
     registerShortcut(key, shortcut) { shortcuts.set(key, shortcut); },
     getActiveTools: () => active, setActiveTools(value) { active = value; },
-    getThinkingLevel: () => "high", appendEntry(type, data) { states.push({ type: "custom", customType: type, data }); },
+    getThinkingLevel: () => effort ?? "high", appendEntry(type, data) { states.push({ type: "custom", customType: type, data }); },
     async setModel(model) {
       if (model.id === "unauthenticated") return false;
-      mainModel = model; return true;
+      mainModel = model; ctx.model = model; return true;
     },
-    setThinkingLevel(value) { effort = value; },
+    setThinkingLevel(value) { effort = value; ctx.thinkingLevel = value; },
   };
   agentsExtension(pi);
   const ctx = {
@@ -69,9 +70,10 @@ function harness(f, flag) {
       hasConfiguredAuth: (model) => model.id !== "unauthenticated" },
     ui: { setStatus(key, value) { statuses.set(key, value); }, notify(...args) { notifications.push(args); }, select: async () => undefined },
   };
-  return { ctx, handlers, commands, shortcuts, statuses, notifications, states, get tool() { return tool; },
+  return { pi, ctx, handlers, commands, shortcuts, statuses, notifications, states, get tool() { return tool; },
     get active() { return active; }, get mainModel() { return mainModel; }, get effort() { return effort; },
-    start: () => handlers.get("session_start")({}, ctx),
+    start: (reason = "startup") => handlers.get("session_start")({ reason }, ctx),
+    input: (text, extra = {}) => handlers.get("input")({ source: "interactive", text, images: [{ type: "image", data: "kept" }], ...extra }, ctx),
     execute: (params, signal, update) => tool.execute("call", params, signal, update, ctx),
   };
 }
@@ -84,14 +86,22 @@ test("validates configuration and rejects typos, bad models and efforts", () => 
     { subagent_variant_overrides: { code: { effort: "huge" } } }, { subagent_variant_overrides: { code: { tools: [] } } }]) {
     assert.throws(() => parseAgentConfig(bad));
   }
-  assert.equal(parseAgentConfig({ subagent_model: "provider/org/model", delegate_exploration: true }).delegate_exploration, true);
+  assert.equal(parseAgentConfig({ subagent_model: "provider/org/model", delegate_exploration: true, auto_profile: false }).auto_profile, false);
+  for (const value of ["true", 1, [], null]) assert.throws(() => parseAgentConfig({ auto_profile: value }));
   assert.throws(() => parseAgentConfig({ delegate_exploration: "true" }));
+  assert.match(agentConfigCapabilities.auto_profile, /automatically select/i);
+});
+
+test("schema exposes the boolean opt-in with strict configuration keys", async () => {
+  const schema = JSON.parse(await readFile(new URL("../schemas/agent.schema.json", import.meta.url), "utf8"));
+  assert.equal(schema.properties.auto_profile.type, "boolean");
+  assert.equal(schema.additionalProperties, false);
 });
 
 test("trusted project config merges fields within overrides without writing settings", async () => {
   await fixture(async (f) => {
-    const global = { model: "test/main", small_model: "test/small", subagent_variant_overrides: { code: { model: "test/code", effort: "high" }, debug: { effort: "high" } } };
-    const local = { subagent_model: "test/worker", subagent_variant_overrides: { code: { effort: "low" } } };
+    const global = { model: "test/main", small_model: "test/small", auto_profile: true, subagent_variant_overrides: { code: { model: "test/code", effort: "high" }, debug: { effort: "high" } } };
+    const local = { subagent_model: "test/worker", auto_profile: false, subagent_variant_overrides: { code: { effort: "low" } } };
     await writeFile(join(f.agentDir, "agents.json"), JSON.stringify(global));
     await writeFile(join(f.cwd, ".pi", "agents.json"), JSON.stringify(local));
     const config = await loadAgentConfig(f.cwd, f.agentDir, true);
@@ -99,6 +109,7 @@ test("trusted project config merges fields within overrides without writing sett
     assert.deepEqual(config.subagent_variant_overrides.debug, { effort: "high" });
     assert.equal(config.small_model, "test/small");
     assert.equal(config.subagent_model, "test/worker");
+    assert.equal(config.auto_profile, false);
     assert.deepEqual(await loadAgentConfig(f.cwd, f.agentDir, false), global);
     await writeFile(join(f.cwd, ".pi", "agents.json"), "{bad");
     await assert.rejects(loadAgentConfig(f.cwd, f.agentDir, true), /agents.json/);
@@ -128,7 +139,7 @@ test("opt-in agent scaffold uses the active model, restrictive permissions and a
     assert.deepEqual(created, [true, false]);
     const path = join(f.cwd, ".pi", "agent.json");
     assert.deepEqual(JSON.parse(await readFile(path, "utf8")), {
-      $schema: agentConfigSchemaUrl, model: "test/current", small_model: "test/current", subagent_model: "test/current", delegate_exploration: false,
+      $schema: agentConfigSchemaUrl, model: "test/current", small_model: "test/current", subagent_model: "test/current", delegate_exploration: false, auto_profile: false,
       subagent_variant_overrides: {
         plan: { model: "test/current", effort: "high" },
         orchestrator: { model: "test/current", effort: "high" },
@@ -145,13 +156,15 @@ test("opt-in agent scaffold uses the active model, restrictive permissions and a
 
 test("setup-agents command fills only missing project settings", async () => {
   await fixture(async (f) => environment(f, async () => {
-    await writeFile(join(f.cwd, ".pi", "agent.json"), JSON.stringify({ model: "test/custom", delegate_exploration: true }));
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":true}');
+    await writeFile(join(f.cwd, ".pi", "agent.json"), JSON.stringify({ model: "test/custom", delegate_exploration: true, auto_profile: false }));
     const h = harness(f);
     await h.commands.get("setup-agents").handler("", h.ctx);
     const config = JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8"));
     assert.equal(config.$schema, agentConfigSchemaUrl);
     assert.equal(config.model, "test/custom");
     assert.equal(config.delegate_exploration, true);
+    assert.equal(config.auto_profile, false);
     assert.equal(config.small_model, "test/custom");
     assert.equal(config.subagent_model, "test/custom");
     assert.equal(config.subagent_variant_overrides.code.model, "test/custom");
@@ -163,7 +176,7 @@ test("setup-agents command fills only missing project settings", async () => {
 
 test("agent scaffold preserves inherited user configuration", async () => {
   await fixture(async (f) => {
-    const inherited = { model: "test/main", small_model: "test/small", subagent_model: "test/worker", delegate_exploration: true, subagent_variant_overrides: {
+    const inherited = { model: "test/main", small_model: "test/small", subagent_model: "test/worker", delegate_exploration: true, auto_profile: true, subagent_variant_overrides: {
       debug: { effort: "off" }, ask: { model: "test/answer" }, code: { model: "test/code", effort: "max" }
     } };
     const path = join(f.agentDir, "agent.json");
@@ -215,6 +228,28 @@ test("missing models, invalid inherited configuration and cancellation do not cr
   });
 });
 
+test("detectProfileIntent recognizes only clear leading requests", () => {
+  const cases = [
+    [" Let's plan this ", "plan"], ["Please, make a plan for login", "plan"], ["Help me plan a migration", "plan"],
+    ["DEBUG this error", "debug"], ["Could you please investigate this failure", "debug"], ["Fix this bug", "debug"],
+    ["Explain this function", "ask"], ["Answer this question", "ask"], ["What does this code do?", "ask"], ["How does authentication work?", "ask"],
+    ["Orchestrate this work", "orchestrator"], ["Coordinate these tasks", "orchestrator"], ["Delegate these tasks to subagents", "orchestrator"],
+    ["Implement this feature", "code"], ["Build the login form", "code"], ["Write this function", "code"], ["Execute this plan", "code"], ["Execute", "code"],
+    ["Let’s plan this", "plan"], ["Please\nexecute", "code"],
+    ["Explain how to implement login", "ask"], ["Make a plan to debug this", "plan"], ["Coordinate implementation and debugging tasks", "orchestrator"],
+    ["Explain this and implement a fix", undefined], ["Implement this and debug the crash", undefined],
+    ["Don't execute this", undefined], ["'debug this'", undefined], ["```debug this```", undefined], ["/profile debug", undefined],
+    ["The README says 'debug this'", undefined], ["What does 'Execute' mean?", "ask"], ["reexecute", undefined], ["yes", undefined], ["", undefined],
+    ["Please don't execute this", undefined], ["Could you please help me debug", "debug"], ["Let's\tplan", "plan"],
+    ["Explain how to debug and implement login", "ask"], ["Make a plan to debug and implement login", "plan"],
+    ["Explain 'debug this and implement that'", "ask"], ["Explain `code and execute commands`", "ask"],
+    ["Execute this and please debug the crash", undefined], ["Plan this. Execute it.", undefined],
+    ["Implement login and build a form", "code"], ["Execute is a keyword", undefined], ["> Execute this plan", undefined],
+    ["~~~\nExecute\n~~~", undefined], ["execute_plan", undefined], ["lets plan", "plan"], ["Explain this\nDebug the error", undefined],
+  ];
+  for (const [text, expected] of cases) assert.equal(detectProfileIntent(text), expected, text);
+});
+
 test("automatic small routing is conservative and variant overrides take precedence", () => {
   const config = { model: "test/main", small_model: "test/small", subagent_model: "test/worker" };
   for (const task of ["Locate the auth entry point", "What does parseConfig do?", "Summarize README.md"]) {
@@ -253,7 +288,7 @@ test("all five profiles execute as child agents with visible routing and preserv
     process.argv.push("--no-extensions", "-e", "gate.ts");
     const h = harness(f);
     await h.start();
-    assert.equal(h.tool.executionMode, "sequential");
+    assert.equal(h.tool.executionMode, "parallel");
     for (const agent of agentNames) {
       const updates = [];
       const result = await h.execute({ agent, task: agent === "ask" ? "Locate the config" : "Complete this task" }, undefined, (value) => updates.push(value));
@@ -304,13 +339,66 @@ test("configured exploration always uses the small model and stays read-only", a
   }));
 });
 
-test("profile command without UI advertises the renamed command", async () => {
+test("profile command without UI and unknown choices advertise auto", async () => {
   await fixture(async (f) => environment(f, async () => {
     const h = harness(f);
+    const choices = [...agentNames, "auto"];
     h.ctx.hasUI = false;
     await h.commands.get("profile").handler("", h.ctx);
-    assert.equal(h.notifications.at(-1)[0], `Current agent: code. Use /profile <${agentNames.join("|")}>.`);
+    assert.equal(h.notifications.at(-1)[0], `Current agent: code. Use /profile <${choices.join("|")}>.`);
+    await h.commands.get("profile").handler("unknown", h.ctx);
+    assert.equal(h.notifications.at(-1)[0], `Unknown agent: unknown. Choose ${choices.join(", ")}.`);
     assert.equal(h.states.length, 0);
+  }));
+});
+
+test("profile picker and completions discover auto without changing its opt-in behavior", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    const configPath = join(f.agentDir, "agent.json");
+    await writeFile(configPath, JSON.stringify({ auto_profile: false, model: "test/main",
+      subagent_variant_overrides: { plan: { model: "test/planner", effort: "low" } } }));
+    const h = harness(f);
+    await h.start();
+    const command = h.commands.get("profile");
+    const choices = [...agentNames, "auto"];
+    assert.deepEqual(command.getArgumentCompletions(""), choices.map((value) => ({ value, label: value })));
+    assert.deepEqual(command.getArgumentCompletions("a"), ["ask", "auto"].map((value) => ({ value, label: value })));
+    assert.deepEqual(command.getArgumentCompletions("au"), [{ value: "auto", label: "auto" }]);
+    assert.deepEqual(command.getArgumentCompletions("or"), [{ value: "orchestrator", label: "orchestrator" }]);
+    assert.equal(command.getArgumentCompletions("unmatched"), null);
+
+    await command.handler("plan", h.ctx);
+    const disabledStateCount = h.states.length;
+    const disabledModel = structuredClone(h.ctx.model);
+    const disabledEffort = h.ctx.thinkingLevel;
+    let pickerChoices;
+    h.ctx.ui.select = async (_title, items) => { pickerChoices = items; return "auto"; };
+    await command.handler("", h.ctx);
+    assert.deepEqual(pickerChoices, choices);
+    assert.equal(h.states.length, disabledStateCount);
+    assert.equal(h.states.at(-1).data.pinned, true);
+    assert.deepEqual(h.ctx.model, disabledModel);
+    assert.equal(h.ctx.thinkingLevel, disabledEffort);
+    assert.match(h.notifications.at(-1)[0], /Enable auto_profile/);
+
+    await writeFile(configPath, JSON.stringify({ auto_profile: true, model: "test/main",
+      subagent_variant_overrides: { plan: { model: "test/planner", effort: "low" } } }));
+    const configured = await readFile(configPath, "utf8");
+    await command.handler("", h.ctx);
+    assert.deepEqual(pickerChoices, choices);
+    assert.equal(h.states.length, disabledStateCount + 1);
+    assert.deepEqual(h.states.at(-1).data, { agent: "plan", origin: "manual", pinned: false });
+    assert.equal(h.statuses.get("piexis-agent"), "agent:plan");
+    assert.deepEqual(h.ctx.model, disabledModel);
+    assert.equal(h.ctx.thinkingLevel, disabledEffort);
+    assert.equal(await readFile(configPath, "utf8"), configured);
+
+    const stateCount = h.states.length;
+    const notifications = h.notifications.length;
+    h.ctx.ui.select = async () => undefined;
+    await command.handler("", h.ctx);
+    assert.equal(h.states.length, stateCount);
+    assert.equal(h.notifications.length, notifications);
   }));
 });
 
@@ -459,6 +547,207 @@ test("failed profile switches preserve model, effort and profile and release the
   }));
 });
 
+test("automatic profiles route eligible input, preserve branch pins, and block failed activation", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({ auto_profile: true, model: "test/main",
+      subagent_variant_overrides: { plan: { model: "test/plan", effort: "low" }, debug: { effort: "max" }, ask: { model: "test/ask", effort: "off" } },
+    }));
+    const h = harness(f);
+    await h.start();
+    assert.equal(h.statuses.get("piexis-agent-mode"), "auto");
+    for (const [text, agent, model, effort] of [["Make a plan", "plan", "plan", "low"], ["Debug this error", "debug", "main", "max"], ["Explain this", "ask", "ask", "off"], ["Execute", "code", "main", "off"], ["Coordinate these tasks", "orchestrator", "main", "off"]]) {
+      const before = h.states.length;
+      assert.deepEqual(await h.input(text), { action: "continue" });
+      assert.equal(h.statuses.get("piexis-agent"), `agent:${agent}`);
+      assert.equal(h.mainModel.id, model);
+      assert.equal(h.effort, effort);
+      assert.equal(h.states.length, before + 1);
+      assert.equal(h.states.at(-1).data.pinned, false);
+    }
+    const unchanged = h.states.length;
+    await h.input("Coordinate this work");
+    await h.input("/profile debug");
+    await h.input("Explain this", { source: "extension" });
+    h.ctx.isIdle = () => false;
+    await h.input("Debug this error");
+    assert.equal(h.states.length, unchanged);
+    h.ctx.isIdle = () => true;
+    await h.commands.get("profile").handler("ask", h.ctx);
+    assert.equal(h.statuses.get("piexis-agent-mode"), "manual");
+    await h.input("Debug this error");
+    assert.equal(h.statuses.get("piexis-agent"), "agent:ask");
+    await h.commands.get("profile").handler("auto", h.ctx);
+    assert.equal(h.statuses.get("piexis-agent-mode"), "auto");
+    await h.input("Debug this error");
+    assert.equal(h.statuses.get("piexis-agent"), "agent:debug");
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({ auto_profile: true, subagent_variant_overrides: { plan: { model: "test/missing" } } }));
+    const count = h.states.length;
+    assert.deepEqual(await h.input("Make a plan"), { action: "handled" });
+    assert.equal(h.states.length, count);
+    assert.equal(h.statuses.get("piexis-agent"), "agent:debug");
+  }));
+});
+
+test("first Execute applies code settings once without a misleading switch notification", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({ auto_profile: true,
+      small_model: "test/small", subagent_model: "test/worker", subagent_variant_overrides: { code: { model: "test/coder", effort: "medium" } } }));
+    const h = harness(f);
+    await h.start();
+    assert.deepEqual(await h.input("Execute"), { action: "continue" });
+    assert.equal(h.mainModel.id, "coder");
+    assert.equal(h.effort, "medium");
+    assert.deepEqual(h.states.at(-1).data, { agent: "code", origin: "automatic", pinned: false });
+    assert.equal(h.notifications.length, 0);
+    await h.input("Execute");
+    await h.input("yes");
+    assert.equal(h.states.length, 1);
+  }));
+});
+
+test("routing skips disabled, unmatched, queued, delegated and non-user input without mutation", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    const h = harness(f);
+    await h.start();
+    await h.input("Make a plan");
+    assert.equal(h.states.length, 0);
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":true}');
+    for (const extra of [{ source: "extension" }, { streamingBehavior: "steer" }, { streamingBehavior: "followUp" }]) {
+      assert.deepEqual(await h.input("Make a plan", extra), { action: "continue" });
+    }
+    for (const text of ["", "looks good", "Explain this and implement it", "/init", "'Make a plan'"]) await h.input(text);
+    const event = { source: "rpc", text: "Explain this function", images: [{ type: "image", data: "original" }] };
+    const before = structuredClone(event);
+    assert.deepEqual(await h.handlers.get("input")(event, h.ctx), { action: "continue" });
+    assert.deepEqual(event, before);
+    assert.equal(h.statuses.get("piexis-agent"), "agent:ask");
+    process.env.PIEXIS_SUBAGENT_DEPTH = "1";
+    const child = harness(f, "debug");
+    await child.start();
+    await child.input("Make a plan");
+    assert.equal(child.statuses.get("piexis-agent"), "agent:debug");
+    assert.equal(child.states.length, 0);
+  }));
+});
+
+test("branch state restores automatic origins, manual pins, releases, legacy entries and fresh sessions", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":true}');
+    const h = harness(f);
+    await h.start();
+    await h.input("Make a plan");
+    const automatic = structuredClone(h.states);
+    await h.commands.get("profile").handler("plan", h.ctx);
+    assert.equal(h.states.at(-1).data.pinned, true);
+    const manual = structuredClone(h.states);
+    await h.input("Execute");
+    assert.equal(h.states.length, 2);
+    await h.commands.get("profile").handler("auto", h.ctx);
+    assert.deepEqual(h.states.at(-1).data, { agent: "plan", origin: "manual", pinned: false });
+    const released = structuredClone(h.states);
+    for (const [state, mode] of [[automatic, "auto"], [manual, "manual"], [released, "auto"]]) {
+      h.states.splice(0, h.states.length, ...structuredClone(state));
+      h.handlers.get("session_tree")({}, h.ctx);
+      assert.equal(h.statuses.get("piexis-agent"), "agent:plan");
+      assert.equal(h.statuses.get("piexis-agent-mode"), mode);
+      const restored = harness(f);
+      restored.states.push(...structuredClone(state), { type: "message" });
+      await restored.start("resume");
+      assert.equal(restored.statuses.get("piexis-agent-mode"), mode);
+      await restored.start("fork");
+      assert.equal(restored.statuses.get("piexis-agent"), "agent:plan");
+    }
+    h.states.splice(0, h.states.length, { type: "custom", customType: "piexis-agent", data: { agent: "debug" } });
+    await h.start("reload");
+    await h.input("Execute");
+    assert.equal(h.states.length, 1);
+    assert.equal(h.statuses.get("piexis-agent-mode"), "manual");
+    h.states.length = 0;
+    await h.start("new");
+    assert.equal(h.statuses.get("piexis-agent"), "agent:code");
+    assert.equal(h.statuses.get("piexis-agent-mode"), "auto");
+  }));
+});
+
+test("CLI pins persist, explicit startup flags win, and replacement runtimes don't reapply them", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":true}');
+    const h = harness(f, "ask");
+    h.states.push({ type: "custom", customType: "piexis-agent", data: { agent: "plan", origin: "automatic", pinned: false } });
+    await h.start();
+    assert.equal(h.statuses.get("piexis-agent"), "agent:ask");
+    assert.equal(h.states.at(-1).data.pinned, true);
+    await h.input("Execute");
+    assert.equal(h.statuses.get("piexis-agent"), "agent:ask");
+    const reload = harness(f, "ask");
+    reload.states.push({ type: "custom", customType: "piexis-agent", data: { agent: "debug", origin: "automatic", pinned: false } });
+    await reload.start("reload");
+    assert.equal(reload.statuses.get("piexis-agent"), "agent:debug");
+    const fresh = harness(f, "ask");
+    await fresh.start("new");
+    assert.equal(fresh.statuses.get("piexis-agent"), "agent:code");
+    await fresh.input("Make a plan");
+    assert.equal(fresh.statuses.get("piexis-agent"), "agent:plan");
+    const invalid = harness(f, "question");
+    await invalid.start();
+    await invalid.input("Make a plan");
+    assert.equal(invalid.states.at(-1).data.pinned, false);
+  }));
+});
+
+test("activation failures restore live runtime settings, don't pin, and stop automatic requests", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({ auto_profile: true,
+      subagent_variant_overrides: { plan: { model: "test/planner", effort: "max" } } }));
+    const h = harness(f);
+    await h.start();
+    h.ctx.model = { provider: "test", id: "externally-selected" };
+    h.ctx.thinkingLevel = "low";
+    const setEffort = h.pi.setThinkingLevel;
+    h.pi.setThinkingLevel = (value) => { setEffort(value); if (value === "max") throw new Error("effort failure"); };
+    assert.deepEqual(await h.input("Make a plan"), { action: "handled" });
+    assert.equal(h.mainModel.id, "externally-selected");
+    assert.equal(h.effort, "low");
+    assert.equal(h.states.length, 0);
+    assert.equal(h.statuses.get("piexis-agent"), "agent:code");
+    h.pi.setThinkingLevel = setEffort;
+    await h.input("Make a plan");
+    assert.equal(h.states.at(-1).data.pinned, false);
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":true,"subagent_variant_overrides":{"ask":{"model":"test/unauthenticated"}}}');
+    assert.deepEqual(await h.input("Explain this"), { action: "handled" });
+    assert.equal(h.states.length, 1);
+    await h.commands.get("profile").handler("ask", h.ctx);
+    assert.equal(h.states.length, 1);
+    await writeFile(join(f.agentDir, "agent.json"), "{bad");
+    assert.deepEqual(await h.input("Explain this"), { action: "handled" });
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":false}');
+    await h.commands.get("profile").handler("auto", h.ctx);
+    assert.equal(h.states.length, 1);
+  }));
+});
+
+test("profile release and automatic routing don't race in-flight switches", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":true,"model":"test/main"}');
+    const h = harness(f);
+    await h.start();
+    await h.commands.get("profile").handler("code", h.ctx);
+    let resume, entered;
+    const barrier = new Promise((resolve) => { entered = resolve; });
+    const setModel = h.pi.setModel;
+    h.pi.setModel = async (model) => { entered(); await new Promise((resolve) => { resume = resolve; }); return setModel(model); };
+    const pending = h.commands.get("profile").handler("debug", h.ctx);
+    await barrier;
+    await h.commands.get("profile").handler("auto", h.ctx);
+    assert.equal(h.states.at(-1).data.pinned, true);
+    assert.deepEqual(await h.input("Make a plan"), { action: "continue" });
+    resume();
+    await pending;
+    assert.equal(h.statuses.get("piexis-agent"), "agent:debug");
+    assert.equal(h.states.at(-1).data.pinned, true);
+  }));
+});
+
 test("footer reads live agent status after commands, cycling and tree restoration without losing width bounds", async () => {
   await fixture(async (f) => environment(f, async () => {
     const h = harness(f);
@@ -599,18 +888,162 @@ test("real Pi CLI delegates to automatic and explicit small models without netwo
 test("abort and shutdown terminate running children; pre-aborted calls never start", { timeout: 10_000 }, async () => {
   await fixture(async (f) => environment(f, async () => {
     await writeFile(f.cli, 'process.on("SIGTERM", () => {}); console.log(JSON.stringify({type:"tool_execution_start",toolName:"read"})); setInterval(() => {}, 1000);');
+    await writeFile(join(f.agentDir, "agent.json"), '{"auto_profile":true}');
     const h = harness(f);
+    await h.start();
     const pre = new AbortController(); pre.abort();
     await assert.rejects(h.execute({ agent: "code", task: "task" }, pre.signal), { name: "AbortError" });
     for (const shutdown of [false, true]) {
       const controller = new AbortController();
       let ready;
       const started = new Promise((resolve) => { ready = resolve; });
-      const pending = h.execute({ agent: "code", task: "task" }, controller.signal, ready);
+      const pending = h.execute({ agent: "code", task: "task" }, controller.signal, (value) => {
+        if (value.content[0].text.includes("Running read")) ready();
+      });
       const rejected = assert.rejects(pending, /aborted/);
       await started;
+      const count = h.states.length;
+      assert.deepEqual(await h.input("Make a plan"), { action: "continue" });
+      await h.commands.get("profile").handler("auto", h.ctx);
+      assert.equal(h.states.length, count);
+      assert.equal(h.statuses.get("piexis-agent"), "agent:code");
+      assert.match(h.notifications.at(-1)[0], /Wait for the current agent/);
       if (shutdown) await h.handlers.get("session_shutdown")(); else controller.abort();
       await rejected;
+    }
+  }));
+});
+
+test("scope metadata validates requests and read mode selects only read tools", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    const h = harness(f, "orchestrator");
+    await h.start();
+    for (const params of [{ mode: "other" }, { paths: ["../outside"] }, { paths: ["/absolute"] }, { paths: [""] }]) {
+      await assert.rejects(h.execute({ agent: "code", task: "task", ...params }));
+    }
+    await assert.rejects(h.execute({ agent: "ask", mode: "write", task: "task" }), /read-only/);
+    const result = await h.execute({ agent: "code", mode: "read", paths: ["src/./a.ts"], task: "Read the source" });
+    assert.equal(result.details.status, "completed");
+    assert.equal(result.details.mode, "read");
+    assert.deepEqual(result.details.paths, ["src/a.ts"]);
+    const output = JSON.parse(result.details.output);
+    assert.deepEqual(output.args[output.args.indexOf("--tools") + 1].split(","), ["read", "grep", "find", "ls"]);
+    assert.ok(output.args.includes("mcp__*"));
+    await writeFile(f.cli, `console.log(JSON.stringify({type:"message_end",message:{role:"assistant",content:[],stopReason:"error",errorMessage:"provider failed"}}));`);
+    const updates = [];
+    const failed = await h.execute({ agent: "code", paths: ["src/a.ts"], task: "task" }, undefined, (value) => updates.push(value));
+    assert.equal(failed.isError, true);
+    assert.equal(failed.details.status, "failed");
+    assert.equal(updates.at(-1).details.status, "failed");
+  }));
+});
+
+test("nested writes inherit ownership and cannot escape a scoped or read-only parent", async () => {
+  await fixture(async (f) => environment(f, async () => {
+    process.env.PIEXIS_SUBAGENT_DEPTH = "1";
+    process.env.PIEXIS_SUBAGENT_SCOPE = JSON.stringify({ mode: "write", paths: ["src"], broad: false });
+    const h = harness(f, "orchestrator");
+    await h.start();
+    assert.match(h.handlers.get("before_agent_start")({ systemPrompt: "base" }).systemPrompt, /Declared ownership: write/);
+    const inherited = await h.execute({ agent: "code", task: "Make scoped changes" });
+    assert.deepEqual(inherited.details.paths, ["src"]);
+    const narrower = await h.execute({ agent: "code", paths: ["src/a.ts"], task: "task" });
+    assert.deepEqual(narrower.details.paths, ["src/a.ts"]);
+    for (const paths of [[], ["other/a.ts"], ["."]]) {
+      await assert.rejects(h.execute({ agent: "code", paths, task: "task" }), /parent's declared ownership/);
+    }
+    process.env.PIEXIS_SUBAGENT_SCOPE = JSON.stringify({ mode: "read", paths: [], broad: false });
+    const read = harness(f, "orchestrator");
+    await read.start();
+    await assert.rejects(read.execute({ agent: "code", task: "Write" }), /parent's declared ownership/);
+    assert.equal((await read.execute({ agent: "ask", task: "Read" })).details.mode, "read");
+  }));
+});
+
+test("subagent footer status counts concurrent profiles, queues conflicts and clears on cancellation", { timeout: 15_000 }, async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(f.cli, `
+      console.log(JSON.stringify({type:"tool_execution_start",toolName:"ready"}));
+      setInterval(() => {}, 1000);
+    `);
+    const h = harness(f, "orchestrator");
+    await h.start();
+    const controllers = [];
+    const pending = [];
+    async function launch(agent, paths, expected) {
+      const controller = new AbortController();
+      controllers.push(controller);
+      let ready;
+      const started = new Promise((resolve) => { ready = resolve; });
+      const job = h.execute({ agent, paths, task: "task" }, controller.signal, (value) => {
+        if (expected === "queued" ? value.details.status === "queued" : value.content[0].text.includes("Running ready")) ready();
+      });
+      pending.push(assert.rejects(job));
+      await started;
+    }
+    try {
+      await launch("code", ["src/a.ts"], "running");
+      assert.equal(h.statuses.get("piexis-subagents"), "subagents · 1 running: code");
+      await launch("debug", ["src/b.ts"], "running");
+      assert.equal(h.statuses.get("piexis-subagents"), "subagents · 2 running: code, debug");
+      await launch("code", ["src/a.ts"], "queued");
+      assert.equal(h.statuses.get("piexis-subagents"), "subagents · 2 running: code, debug · 1 queued: code");
+      controllers[2].abort();
+      await pending[2];
+      assert.equal(h.statuses.get("piexis-subagents"), "subagents · 2 running: code, debug");
+    } finally {
+      for (const controller of controllers) controller.abort();
+      await Promise.all(pending);
+    }
+    assert.equal(h.statuses.get("piexis-subagents"), undefined);
+    await assert.rejects(h.execute({ agent: "code", paths: ["../outside"], task: "task" }));
+    assert.equal(h.statuses.get("piexis-subagents"), undefined);
+  }));
+});
+
+test("queued cancellation and shutdown never spawn blocked children and release profile guards", { timeout: 15_000 }, async () => {
+  await fixture(async (f) => environment(f, async () => {
+    await writeFile(f.cli, `
+      import { appendFileSync } from "node:fs";
+      let task = ""; for await (const chunk of process.stdin) task += chunk;
+      appendFileSync("starts.jsonl", JSON.stringify(task) + "\\n");
+      console.log(JSON.stringify({type:"tool_execution_start",toolName:"ready"}));
+      setInterval(() => {}, 1000);
+    `);
+    for (const shutdown of [false, true]) {
+      const h = harness(f, "orchestrator");
+      await h.start();
+      const controller = new AbortController();
+      let ready;
+      const started = new Promise((resolve) => { ready = resolve; });
+      const active = h.execute({ agent: "code", paths: ["src"], task: "active" }, controller.signal, (value) => {
+        if (value.content[0].text.includes("Running ready")) ready();
+      });
+      const activeRejected = assert.rejects(active, /aborted/);
+      await started;
+      let waiting;
+      const isQueued = new Promise((resolve) => { waiting = resolve; });
+      const queuedController = new AbortController();
+      const queued = h.execute({ agent: "code", paths: ["src/a.ts"], task: "queued" }, queuedController.signal, (value) => {
+        if (value.details.status === "queued") waiting();
+      });
+      const queuedRejected = assert.rejects(queued);
+      await isQueued;
+      assert.equal((await readFile(join(f.cwd, "starts.jsonl"), "utf8")).trim().split("\n").length, 1);
+      await h.commands.get("profile").handler("debug", h.ctx);
+      assert.equal(h.statuses.get("piexis-agent"), "agent:orchestrator");
+      if (shutdown) await h.handlers.get("session_shutdown")();
+      else { queuedController.abort(); controller.abort(); }
+      await Promise.all([activeRejected, queuedRejected]);
+      assert.equal((await readFile(join(f.cwd, "starts.jsonl"), "utf8")).trim().split("\n").length, 1);
+      await h.commands.get("profile").handler("debug", h.ctx);
+      assert.equal(h.statuses.get("piexis-agent"), "agent:debug");
+      await rm(join(f.cwd, "starts.jsonl"));
+      if (shutdown) {
+        await h.start("new");
+        await writeFile(f.cli, `console.log(JSON.stringify({type:"message_end",message:{role:"assistant",content:[{type:"text",text:"restarted"}],stopReason:"stop"}}));`);
+        assert.equal((await h.execute({ agent: "code", task: "restart" })).details.status, "completed");
+      }
     }
   }));
 });

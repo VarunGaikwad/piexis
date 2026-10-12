@@ -13,7 +13,7 @@ Restart Pi or run `/reload` after installation. The package loads AskQuestion, a
 ## Resources
 
 - **AskQuestion** provides keyboard-driven single/multi selection and text questions in the interactive TUI, with validation, answer review, and cancellation. It requires terminal input and output.
-- **UI** shows project information, agent activity, Git branch, model, and context usage. The startup header shows three random, category-labelled tips from `lib/ui-tips.json`, preferring different categories and staying stable across redraws. Tips cycle without repeats until the list is exhausted within the extension runtime; `/reload` starts a new cycle. Each JSON entry has `category` and `text` fields; edit them to change the recommendations.
+- **UI** shows project information, agent activity, Git branch, model, and context usage. When automatic profile routing is enabled, the footer shows `agent:<profile> (auto)` (or `(manual)` for a pinned profile) where space permits; narrow layouts retain the profile first. The startup header shows three random, category-labelled tips from `lib/ui-tips.json`, preferring different categories and staying stable across redraws. Tips cycle without repeats until the list is exhausted within the extension runtime; `/reload` starts a new cycle. Each JSON entry has `category` and `text` fields; edit them to change the recommendations.
 - **Recommended tools** offers to enable native `grep`, `find`, and `ls` for the project at startup; no slash command is needed.
 - **Agents** provides `plan`, `orchestrator`, `debug`, `ask`, and `code` profiles, all callable through the `subagent` tool. Small delegated tasks can automatically use a cheaper model.
 - **Skills** cover implementation, debugging, review, design, refactoring, validation, and document workflows. Bundled **caveman** adds concise chat style; **ponytail** guides the smallest complete coding change. Only their core instructions are included, not upstream hooks or companion skills. Source revisions and licenses live beside each skill.
@@ -46,7 +46,7 @@ The setup extension is `extensions/recommended-tools.ts`; package resource filte
 
 ## Agents and subagents
 
-Use `/profile` to select a profile, `/profile plan` to switch directly, or `pi --agent orchestrator` at startup. **Alt+A** cycles `plan → orchestrator → debug → ask → code` while idle; cycling is blocked while an agent is running. The footer shows the active profile (`agent:code`) and, on wider terminals, the shortcut hint. `/hotkeys` lists the shortcut. `code` is the default. Profile choices follow the active session branch. Profiles add instructions rather than replacing repository guidance or changing the main session's tools:
+Use `/profile` to select a profile or `auto` to resume automatic routing, `/profile plan` to switch directly, or `pi --agent orchestrator` at startup. **Alt+A** cycles `plan → orchestrator → debug → ask → code` while idle; cycling is blocked while an agent is running. The footer shows the active profile (`agent:code`) and, on wider terminals, its automatic/manual routing mode and the shortcut hint. `/hotkeys` lists the shortcut. `code` is the default. Profile choices follow the active session branch. Profiles add instructions rather than replacing repository guidance or changing the main session's tools:
 
 | Profile | Purpose |
 | --- | --- |
@@ -56,9 +56,23 @@ Use `/profile` to select a profile, `/profile plan` to switch directly, or `pi -
 | `ask` | Answer questions from code/documentation; no changes |
 | `code` | Implement scoped changes and run checks |
 
-All five are callable with `subagent({ "agent": "ask", "task": "Locate the configuration loader" })`. The orchestrator chooses when to delegate; delegation is not an automatic pipeline. Each child receives its task, normal Pi resources, and profile instructions, **not** the parent's conversation. Supply necessary context explicitly. Children share the workspace, so calls are sequential; delegation stops at two child levels. A delegated orchestrator can call other subagents at the second level.
+With `auto_profile: true`, Piexis checks each eligible new request using conservative English leading-action rules:
 
-Optional configuration lives in `~/.pi/agent/agent.json` (or `$PI_CODING_AGENT_DIR/agent.json`) and trusted-project `.pi/agent.json`. Legacy `agents.json` is still read when `agent.json` is absent in that scope; no files are renamed or deleted. Project fields override user fields; per-variant overrides merge by field. Accepting **Enable** during project setup creates the project scaffold only when no project agent configuration exists; user-level files are never written. Defaults use the current model unless user-level configuration specifies another model. New scaffolds set `delegate_exploration` to `false`; edit it to opt in. `/setup-agents` creates a missing project config or fills only its missing settings with defaults, preserving every configured value. It uses the active model when it must choose a model. Generated files include `$schema` for editor validation; configuration reloads on each profile switch and delegation. Use exact `provider/model-id` strings from `/model`, not fuzzy aliases:
+| Clear request wording | Profile |
+| --- | --- |
+| Plan / make a plan | `plan` |
+| Debug / investigate / fix this bug | `debug` |
+| Explain / answer / what or how question | `ask` |
+| Orchestrate / coordinate / delegate tasks | `orchestrator` |
+| Implement / build / write / **Execute** | `code` |
+
+All five are callable with `subagent({ "agent": "ask", "task": "Locate the configuration loader" })`. The orchestrator chooses when to delegate; delegation is not an automatic pipeline. Each child receives its task, normal Pi resources, and profile instructions, **not** the parent's conversation. Supply necessary context explicitly. Children share the workspace. Only an `orchestrator` parent can run up to **two** independent jobs concurrently; other profiles remain sequential. Delegation stops at two child levels, and nested writes must remain within the inherited parent scope. A delegated orchestrator can call other subagents at the second level.
+
+Declare ownership with `subagent({ "agent": "code", "mode": "write", "paths": ["lib/example.ts", "tests/example.test.mjs"], "task": "..." })`. File/directory overlaps serialize writes. Missing or empty write paths, repository-root ownership, and shared configuration (`package.json`, lockfiles, `tsconfig*.json`, `.pi/`, `.git/`, `.github/`, and common root tool configs) reserve broad write ownership and serialize with all writes. Paths are normalized repository-relative paths; absolute, escaping, and symlinked write paths are rejected. `mode: "read"` selects only read tools and reserves no paths. `plan`, `ask`, and `purpose: "explore"` are always read-only. Read jobs can run beside writes, subject to capacity and parent-profile policy; their observations are not snapshot-isolated. Results/progress include mode, normalized paths, queue reason, and status.
+
+Scopes are cooperative ownership declarations, **not sandboxing**. Do not write outside them or edit the parent workspace while write children are running. No output is automatically merged or reverted. Pi's global sequential setting, or a sequential tool in the same batch, can still serialize calls. Concurrency is fixed at two per parent scheduler; no new `agent.json` setting is required.
+
+Optional configuration lives in `~/.pi/agent/agent.json` (or `$PI_CODING_AGENT_DIR/agent.json`) and trusted-project `.pi/agent.json`. Legacy `agents.json` is still read when `agent.json` is absent in that scope; no files are renamed or deleted. Project fields override user fields; per-variant overrides merge by field. Accepting **Enable** during project setup creates the project scaffold only when no project agent configuration exists; user-level files are never written. Defaults use the current model unless user-level configuration specifies another model. New scaffolds set `delegate_exploration` and `auto_profile` to `false`; inherited user values are preserved unless a trusted project explicitly supplies its own value. `/setup-agents` creates a missing project config or fills only its missing settings with defaults, preserving every configured value. It uses the active model when it must choose a model. Generated files include `$schema` for editor validation; configuration reloads on each profile switch and delegation. Use exact `provider/model-id` strings from `/model`, not fuzzy aliases:
 
 ```json
 {
@@ -67,6 +81,7 @@ Optional configuration lives in `~/.pi/agent/agent.json` (or `$PI_CODING_AGENT_D
   "small_model": "provider/default-model",
   "subagent_model": "provider/default-model",
   "delegate_exploration": true,
+  "auto_profile": false,
   "subagent_variant_overrides": {
     "plan": { "model": "provider/default-model", "effort": "high" },
     "orchestrator": { "model": "provider/default-model", "effort": "high" },
@@ -76,6 +91,10 @@ Optional configuration lives in `~/.pi/agent/agent.json` (or `$PI_CODING_AGENT_D
   }
 }
 ```
+
+`auto_profile` defaults to `false`; set it to `true` in user configuration or a trusted project configuration to switch profiles for each clear English request without confirmation. Unmatched or ambiguous wording keeps the current profile; `Execute` alone selects `code` and uses the existing conversation as context. The outer request wins: “Explain how to implement login” selects `ask`, not `code`; quoted/code mentions and negations do not trigger the mentioned action. `/profile`, **Alt+A**, and `--agent` pin manual selection on the current branch; `/profile auto` releases the pin without changing the current profile or model, so the next clear request can route again.
+
+Only idle main-session user input is eligible. Queued steering/follow-up messages, slash commands, extension-originated input, and delegated agents do not auto-route. A failed automatic activation does not submit the request; correct the configuration or model and retry. These conservative rules use no classifier/model call, new keyboard shortcut, automatic pipeline/plan handoff, or tool-access/sandboxing changes. Non-TUI clients receive supported status/notifications; Piexis does not add a browser-specific badge.
 
 **Alt+A** and `/profile` apply the selected profile's `model` and `effort` from `subagent_variant_overrides` to the main session too. Without a profile model override, switching uses the top-level `model` if configured; otherwise it keeps the current model. Missing effort overrides leave the current thinking level alone (subject to Pi's model-capability clamping). `subagent_model` and `small_model` remain delegation-only settings. Invalid configuration or an unavailable model leaves the current profile unchanged and shows a warning.
 
@@ -87,7 +106,7 @@ Effort accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Var
 
 Child agents run in separate Pi processes with ephemeral sessions and the same OS permissions. Their tool selection is a subset of the parent's active tools; `plan`/`ask` children select only `read`, `grep`, `find`, and `ls`, and disable native MCP access. With `delegate_exploration`, a non-exploration `plan` or `ask` child may also receive `subagent` to perform one nested exploration; exploration children never receive it. `plan`/`ask` parents may delegate only to those two profiles. Other children omit `AskQuestion` and return questions to the parent. Main profile instructions and child tool selection are **not sandboxing**. Normal configured extensions and explicitly supplied CLI extensions load in children, with the parent's project-trust decision. Runtime-only provider/tool registrations, CLI `--api-key` overrides, credentials supplied only to an embedded SDK session, and in-memory state in other extensions are not copied to child processes. Use Pi's stored or environment-based authentication for delegation. Other extensions remain responsible for their own restrictions; verify their subprocess behavior before using delegation in a restricted host.
 
-Abort and shutdown terminate active children (including their process group on Unix). Windows termination is best-effort for descendants. Model-facing output is capped at 50,000 characters; tool details retain up to 1 MB. JSON/print mode supports subagents but has no profile picker or child terminal interaction. Avoid loading another extension that registers `subagent`, `/profile`, `/setup-agents`, or `--agent` alongside this one.
+Abort removes queued work without spawning a child and terminates active children (including their process group on Unix). Profile switching is blocked during preparation, queued work, and active work. Shutdown cancels all queued/active jobs and waits for active children to settle. Windows termination is best-effort for descendants. Model-facing output is capped at 50,000 characters; tool details retain up to 1 MB. JSON/print mode supports subagents but has no profile picker or child terminal interaction. Avoid loading another extension that registers `subagent`, `/profile`, `/setup-agents`, or `--agent` alongside this one.
 
 ## AskQuestion
 

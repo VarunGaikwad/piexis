@@ -220,7 +220,7 @@ test("automatic startup approval enables immediately, preserves active extension
     assert.equal(saved.piexis.recommendedTools, "enabled");
     assert.equal(saved.quietStartup, true);
     assert.deepEqual(JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8")), {
-      $schema: agentConfigSchemaUrl, model: "test/default", small_model: "test/default", subagent_model: "test/default", delegate_exploration: false,
+      $schema: agentConfigSchemaUrl, model: "test/default", small_model: "test/default", subagent_model: "test/default", delegate_exploration: false, auto_profile: false,
       subagent_variant_overrides: {
         plan: { model: "test/default", effort: "high" },
         orchestrator: { model: "test/default", effort: "high" },

@@ -8,7 +8,7 @@ export { agentNames, type AgentConfig, type AgentName, effortLevels, type Effort
 
 export const profiles: Record<AgentName, string> = {
   plan: "Explore the request and relevant code, clarify important unknowns, and return an actionable plan with acceptance checks. Do not implement or delegate implementation. Stop after the plan.",
-  orchestrator: "Break work into focused tasks and delegate to plan, debug, ask, or code using subagent. Include all necessary context in each task; children do not inherit the conversation. Keep overlapping file changes sequential. Inspect results, resolve disagreements, and report verification evidence. Do not delegate the same orchestration task recursively.",
+  orchestrator: "Break work into focused tasks and delegate to plan, debug, ask, or code using subagent. Include all necessary context in each task; children do not inherit the conversation. Declare mode: read for read-only work and mode: write with precise repository-relative paths for edits. Divide parallel work by non-overlapping ownership; at most two jobs can run concurrently. Leave uncertain, overlapping, or shared-configuration writes sequential. Do not edit the workspace yourself while write children are running. Inspect results, reconcile integration issues, and run final verification after all children settle. Do not delegate the same orchestration task recursively.",
   debug: "Reproduce or establish evidence for the failure, trace its cause before editing, and make the smallest justified fix. Verify with a regression check. Separate confirmed facts from hypotheses and report any unexecuted checks.",
   ask: "Answer the user's question using relevant code or documentation as evidence. Do not change files or delegate changes. When context is missing, ask rather than invent facts. Stop when the question is answered.",
   code: "Implement the requested scope using existing repository patterns. Preserve unrelated changes, add focused coverage for behavior changes, run relevant checks, and report results. Stop when acceptance conditions are met.",
@@ -34,7 +34,7 @@ export function parseAgentConfig(value: unknown): AgentConfig {
   const source = object(value, "Agent configuration");
   const result: AgentConfig = {};
   for (const key of Object.keys(source)) {
-    if (!["$schema", "model", "small_model", "subagent_model", "delegate_exploration", "subagent_variant_overrides"].includes(key)) {
+    if (!["$schema", "model", "small_model", "subagent_model", "delegate_exploration", "auto_profile", "subagent_variant_overrides"].includes(key)) {
       throw new Error(`Unknown agent configuration key: ${key}`);
     }
   }
@@ -48,6 +48,10 @@ export function parseAgentConfig(value: unknown): AgentConfig {
   if (source.delegate_exploration !== undefined) {
     if (typeof source.delegate_exploration !== "boolean") throw new Error("delegate_exploration must be a boolean");
     result.delegate_exploration = source.delegate_exploration;
+  }
+  if (source.auto_profile !== undefined) {
+    if (typeof source.auto_profile !== "boolean") throw new Error("auto_profile must be a boolean");
+    result.auto_profile = source.auto_profile;
   }
   if (source.subagent_variant_overrides !== undefined) {
     result.subagent_variant_overrides = {};
@@ -164,6 +168,35 @@ export async function completeProjectAgentConfig(cwd: string, agentDir: string, 
       return "updated";
     } finally { await rm(temporary, { force: true }); }
   });
+}
+
+const profileIntentRules: [AgentName, RegExp][] = [
+  ["plan", /^(?:let'?s\s+plan|(?:make|create)\s+(?:me\s+)?(?:a\s+)?plan|help\s+me\s+plan|plan)\b/i],
+  ["debug", /^(?:help\s+me\s+)?(?:debug|investigate|fix\s+(?:a\s+|the\s+|this\s+)?(?:bug|error|crash|failure))\b/i],
+  ["orchestrator", /^(?:orchestrate|coordinate|delegate)\b/i],
+  ["code", /^(?:implement|build|write|execute)\b/i],
+  ["ask", /^(?:explain|answer(?:\s+(?:this\s+)?question)?|what|how|why|where|when|who)\b/i],
+];
+const politePrefix = /^(?:(?:please|kindly|hey)[,\s]+|(?:could|would|can)\s+you\s+)+/i;
+
+export function detectProfileIntent(text: string): AgentName | undefined {
+  const input = text.trim().replace(/\u2019/g, "'").replace(politePrefix, "");
+  if (!input || /^[/`>~"'\u201c\u2018]/.test(input)) return undefined;
+  const match = profileIntentRules.find(([, expression]) => expression.test(input));
+  if (!match) return undefined;
+  const [profile, expression] = match;
+  const rest = input.slice(input.match(expression)![0].length);
+  if (profile !== "ask" && /^\s+(?:is|means|refers\s+to)\b/i.test(rest)) return undefined;
+  // shortcut: bounded English outer-action rules; expand only with evaluated intent examples.
+  const nested = /^(?:\s+(?:how|why|what|when|where)\b)|\bto\s+(?:debug|investigate|implement|build|write|execute)\b/i.test(rest);
+  if (!nested) {
+    const ownText = rest.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`|"[^"]*"|“[^”]*”|'[^']*'|‘[^’]*’/g, "");
+    for (const clause of ownText.split(/\b(?:and(?:\s+then)?|then|but|also)\s+|[.!?]\s+|\n+/i).slice(1)) {
+      const other = profileIntentRules.find(([, rule]) => rule.test(clause.trim().replace(politePrefix, "")));
+      if (other && other[0] !== profile) return undefined;
+    }
+  }
+  return profile;
 }
 
 export function isSmallTask(agent: AgentName, task: string): boolean {

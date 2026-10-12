@@ -11,6 +11,7 @@ export interface AgentConfig {
   small_model?: string;
   subagent_model?: string;
   delegate_exploration?: boolean;
+  auto_profile?: boolean;
   subagent_variant_overrides?: Partial<Record<AgentName, { model?: string; effort?: Effort }>>;
 }
 
@@ -21,7 +22,8 @@ export interface AgentConfig {
 export const initialAgentConfigDefaults = {
   "$schema": agentConfigSchemaUrl,
   delegate_exploration: false,
-} satisfies Pick<AgentConfig, "$schema" | "delegate_exploration">;
+  auto_profile: false,
+} satisfies Pick<AgentConfig, "$schema" | "delegate_exploration" | "auto_profile">;
 
 /** Header copy for incomplete project agent configuration. */
 export type AgentConfigSetting = Exclude<keyof AgentConfig, "$schema">;
@@ -31,6 +33,7 @@ export const agentConfigCapabilities = {
   small_model: "use a cheaper model for eligible small tasks",
   subagent_model: "choose the normal model for delegated work",
   delegate_exploration: "opt in to cheap, read-only codebase exploration",
+  auto_profile: "automatically select a profile for clear requests",
   subagent_variant_overrides: "customize model and effort for each agent profile",
 } satisfies Record<AgentConfigSetting, string>;
 
@@ -50,6 +53,7 @@ export function createInitialAgentConfig(selected: string, inherited: AgentConfi
     small_model: inherited.small_model ?? selected,
     subagent_model: inherited.subagent_model ?? selected,
     delegate_exploration: inherited.delegate_exploration ?? initialAgentConfigDefaults.delegate_exploration,
+    auto_profile: inherited.auto_profile ?? initialAgentConfigDefaults.auto_profile,
     subagent_variant_overrides: overrides,
   };
 }

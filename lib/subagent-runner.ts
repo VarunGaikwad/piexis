@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, join } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { SubagentScope } from "./subagent-scheduler.ts";
 
 type Usage = NonNullable<Awaited<ReturnType<ToolDefinition["execute"]>>["usage"]>;
 
@@ -50,6 +51,7 @@ export async function runSubagent(options: {
   cwd: string;
   depth: number;
   task: string;
+  scope?: SubagentScope;
   signal: AbortSignal;
   onProgress?: (text: string) => void;
 }): Promise<ChildResult> {
@@ -60,7 +62,8 @@ export async function runSubagent(options: {
     const child = spawn(options.invocation.command, [...options.invocation.args, ...options.args], {
       cwd: options.cwd, shell: false, detached: grouped,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, PIEXIS_SUBAGENT_DEPTH: String(options.depth) },
+      env: { ...process.env, PIEXIS_SUBAGENT_DEPTH: String(options.depth),
+        ...(options.scope ? { PIEXIS_SUBAGENT_SCOPE: JSON.stringify(options.scope) } : {}) },
     });
     let buffer = "", bytes = 0, timer: NodeJS.Timeout | undefined, failure: Error | undefined;
     let closed = false;

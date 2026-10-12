@@ -60,6 +60,14 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
     setContext: (value) => { context = value; },
     setBranch: (value) => { branch = value; },
     setAgent: (value) => { statuses.set("piexis-agent", value); },
+    setAgentMode: (value) => {
+      if (value) statuses.set("piexis-agent-mode", value);
+      else statuses.delete("piexis-agent-mode");
+    },
+    setChildren: (value) => {
+      if (value) statuses.set("piexis-subagents", value);
+      else statuses.delete("piexis-subagents");
+    },
     setThinking: (value) => { thinking = value; },
     renders: () => renders,
     branchChanged: () => branchChanged(),
@@ -178,6 +186,7 @@ test("startup header explains missing project agent configuration", async () => 
       const text = f.header(200).join("\n");
       assert.match(text, /Agent config: add small_model to use a cheaper model for eligible small tasks\./);
       assert.match(text, /Agent config: add delegate_exploration to opt in to cheap, read-only codebase exploration\./);
+      assert.match(text, /Agent config: add auto_profile to automatically select a profile for clear requests\./);
       assert.doesNotMatch(text, /Agent config: add model/);
       for (let width = 1; width <= 200; width++) {
         for (const line of f.header(width)) assert.ok(visibleWidth(line) <= width);
@@ -299,6 +308,38 @@ test("dashboard shows branch totals, full model, thinking, context and cost", as
   assert.doesNotMatch(f.render().join("\n"), /↑1.5k|cache 67%/);
 });
 
+test("footer includes tool-result usage once and follows the active branch", async (t) => {
+  const f = fixture();
+  const main = assistant(100, 20, 0, 0, 0.01);
+  const child = assistant(50, 10, 0, 0, 0.02);
+  child.message.role = "toolResult";
+  child.message.toolName = "subagent";
+  child.message.details = { usage: child.message.usage };
+  f.setEntries([main, child, { type: "message", message: { role: "toolResult" } }]);
+  await f.emit("session_start");
+  t.after(() => f.dispose());
+  assert.match(f.render()[1], /↑150 ↓30.*\$0\.03$/);
+  assert.deepEqual(f.render(), f.render());
+  f.setEntries([main]);
+  assert.match(f.render()[1], /↑100 ↓20.*\$0\.01$/);
+});
+
+test("footer shows live running and queued subagents without exceeding terminal width", async (t) => {
+  const f = fixture();
+  await f.emit("session_start");
+  t.after(() => f.dispose());
+  f.setChildren("subagents · 2 running: code, ask · 1 queued: debug");
+  assert.equal(f.render().length, 3);
+  assert.equal(f.render()[2], "subagents · 2 running: code, ask · 1 queued: debug");
+  for (let width = 0; width <= 160; width++) {
+    for (const row of f.render(width)) assert.ok(visibleWidth(row) <= width);
+  }
+  f.setChildren("subagents · 1 running: ask");
+  assert.match(f.render()[2], /1 running: ask/);
+  f.setChildren(undefined);
+  assert.equal(f.render().length, 2);
+});
+
 test("two-row layouts fit every width and preserve core fields at 40 columns", async (t) => {
   const f = fixture();
   f.setAgent("agent:orchestrator");
@@ -319,12 +360,31 @@ test("two-row layouts fit every width and preserve core fields at 40 columns", a
   assert.match(f.render(160)[0], /gpt-5\.4.*think high.*main.*0 prompts.*Alt\+A/);
 });
 
+test("agent routing mode is live on wide layouts and yields to the profile when narrow", async (t) => {
+  const f = fixture();
+  f.setAgent("agent:orchestrator");
+  f.setAgentMode("auto");
+  await f.emit("session_start");
+  t.after(() => f.dispose());
+  assert.match(f.render(160)[0], /agent:orchestrator \(auto\)/);
+  assert.match(f.render(40)[0], /agent:orchestrator/);
+  assert.doesNotMatch(f.render(40)[0], /\(auto\)/);
+  f.setAgentMode("manual");
+  assert.match(f.render(160)[0], /agent:orchestrator \(manual\)/);
+  f.setAgentMode(undefined);
+  assert.doesNotMatch(f.render(160)[0], /agent:orchestrator \(/);
+  for (let width = 0; width <= 160; width++) {
+    for (const line of f.render(width)) assert.ok(visibleWidth(line) <= width, `${width}: ${line}`);
+  }
+});
+
 test("long styled Unicode fields shrink independently without hiding core status", async (t) => {
   const f = fixture("tui", {
     fg: (_color, text) => `\x1b[36m${text}\x1b[39m`,
     bold: (text) => `\x1b[1m${text}\x1b[22m`
   });
   f.setAgent("agent:orchestrator");
+  f.setAgentMode("manual");
   f.setBranch("研究🚀".repeat(80));
   f.ctx.model = { id: "研究🚀".repeat(80) };
   await f.emit("session_start");

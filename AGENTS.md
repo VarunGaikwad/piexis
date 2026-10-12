@@ -5,7 +5,7 @@
 Piexis (`@preapexis/piexis`) is a TypeScript Pi package providing interactive questions, UI extensions, skills, prompts, and themes. Node.js 22.19+ and a current Pi release are required.
 
 - `extensions/ask-question.ts`: sequential interactive `AskQuestion` tool; requires the TUI.
-- `extensions/agents.ts`: five agent profiles and sequential subprocess subagents; `lib/agents.ts` owns configuration/routing, and `lib/subagent-runner.ts` owns protocol/cancellation. User/project `agent.json` files configure models and effort, with legacy `agents.json` fallback. Accepted project setup creates a missing `.pi/agent.json` scaffold without overwriting existing configuration.
+- `extensions/agents.ts`: five agent profiles and subprocess subagents; only orchestrator parents can run two non-conflicting jobs concurrently. `lib/agents.ts` owns configuration/routing, `lib/subagent-scheduler.ts` owns scope validation/scheduling, and `lib/subagent-runner.ts` owns protocol/cancellation. User/project `agent.json` files configure models and effort, with legacy `agents.json` fallback. Accepted project setup creates a missing `.pi/agent.json` scaffold without overwriting existing configuration.
 - `extensions/ui.ts`: project header, activity footer, Git branch, model, and context usage.
 - `extensions/recommended-tools.ts`: automatic opt-in project setup for Pi's native `grep`, `find`, and `ls` tools.
 - `skills/`: task-specific `SKILL.md` guidance.

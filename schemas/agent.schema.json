@@ -16,6 +16,10 @@
       "type": "boolean",
       "description": "Allow read-only exploration to use small_model."
     },
+    "auto_profile": {
+      "type": "boolean",
+      "description": "Automatically select a profile for clear requests."
+    },
     "subagent_variant_overrides": {
       "type": "object",
       "additionalProperties": false,
