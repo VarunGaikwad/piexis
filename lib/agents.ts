@@ -171,11 +171,11 @@ export async function completeProjectAgentConfig(cwd: string, agentDir: string, 
 }
 
 const profileIntentRules: [AgentName, RegExp][] = [
-  ["plan", /^(?:let'?s\s+plan|(?:make|create)\s+(?:me\s+)?(?:a\s+)?plan|help\s+me\s+plan|plan)\b/i],
-  ["debug", /^(?:help\s+me\s+)?(?:debug|investigate|fix\s+(?:a\s+|the\s+|this\s+)?(?:bug|error|crash|failure))\b/i],
-  ["orchestrator", /^(?:orchestrate|coordinate|delegate)\b/i],
-  ["code", /^(?:implement|build|write|execute)\b/i],
-  ["ask", /^(?:explain|answer(?:\s+(?:this\s+)?question)?|what|how|why|where|when|who)\b/i],
+  ["plan", /^(?:let'?s\s+plan|(?:make|create)\s+(?:me\s+)?(?:a\s+)?plan|help\s+me\s+plan|plan|design|outline|analyze|think\s+through|approach)\b/i],
+  ["debug", /^(?:help\s+me\s+)?(?:debug|investigate|fix|error|bug|broken|failing|crash|failure)\b/i],
+  ["orchestrator", /^(?:orchestrate|coordinate|delegate|parallelize|split(?:\s+(?:this|it))?\s+into\s+tasks|use\s+subagents)\b/i],
+  ["code", /^(?:create|make|add|implement|build|write|execute|generate|edit|modify|update|remove|delete|refactor)\b/i],
+  ["ask", /^(?:explain|answer(?:\s+(?:this\s+)?question)?|tell\s+me|clarify|what|how|why|where|when|who)\b/i],
 ];
 const politePrefix = /^(?:(?:please|kindly|hey)[,\s]+|(?:could|would|can)\s+you\s+)+/i;
 

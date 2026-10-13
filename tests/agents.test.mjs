@@ -231,10 +231,11 @@ test("missing models, invalid inherited configuration and cancellation do not cr
 test("detectProfileIntent recognizes only clear leading requests", () => {
   const cases = [
     [" Let's plan this ", "plan"], ["Please, make a plan for login", "plan"], ["Help me plan a migration", "plan"],
-    ["DEBUG this error", "debug"], ["Could you please investigate this failure", "debug"], ["Fix this bug", "debug"],
-    ["Explain this function", "ask"], ["Answer this question", "ask"], ["What does this code do?", "ask"], ["How does authentication work?", "ask"],
-    ["Orchestrate this work", "orchestrator"], ["Coordinate these tasks", "orchestrator"], ["Delegate these tasks to subagents", "orchestrator"],
-    ["Implement this feature", "code"], ["Build the login form", "code"], ["Write this function", "code"], ["Execute this plan", "code"], ["Execute", "code"],
+    ["Design the API", "plan"], ["Outline the rollout", "plan"], ["Analyze this approach", "plan"], ["Think through authentication", "plan"], ["Approach this migration", "plan"],
+    ["DEBUG this error", "debug"], ["Could you please investigate this failure", "debug"], ["Fix this bug", "debug"], ["Fix this", "debug"], ["Broken tests", "debug"], ["Failing deployment", "debug"],
+    ["Explain this function", "ask"], ["Answer this question", "ask"], ["Tell me about this function", "ask"], ["Clarify this requirement", "ask"], ["What does this code do?", "ask"], ["How does authentication work?", "ask"],
+    ["Orchestrate this work", "orchestrator"], ["Coordinate these tasks", "orchestrator"], ["Delegate these tasks to subagents", "orchestrator"], ["Parallelize this work", "orchestrator"], ["Split this into tasks", "orchestrator"], ["Use subagents", "orchestrator"],
+    ["Create a file", "code"], ["Make a new component", "code"], ["Add a command", "code"], ["Implement this feature", "code"], ["Build the login form", "code"], ["Write this function", "code"], ["Generate a config", "code"], ["Edit this function", "code"], ["Modify this file", "code"], ["Update the README", "code"], ["Remove this setting", "code"], ["Delete this file", "code"], ["Refactor this module", "code"], ["Execute this plan", "code"], ["Execute", "code"],
     ["Let’s plan this", "plan"], ["Please\nexecute", "code"],
     ["Explain how to implement login", "ask"], ["Make a plan to debug this", "plan"], ["Coordinate implementation and debugging tasks", "orchestrator"],
     ["Explain this and implement a fix", undefined], ["Implement this and debug the crash", undefined],

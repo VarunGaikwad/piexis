@@ -45,6 +45,18 @@ export function limitOutput(text: string, limit = 50_000): string {
   return text.length > limit ? `${text.slice(0, limit)}\n[Output truncated; full output is in subagent tool details (up to 1 MB).]` : text;
 }
 
+/** Preserve only runtime essentials; delegated agents must not inherit user or host secrets. */
+export function subagentEnvironment(depth: number, scope?: SubagentScope): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {
+    PIEXIS_SUBAGENT_DEPTH: String(depth),
+    ...(scope ? { PIEXIS_SUBAGENT_SCOPE: JSON.stringify(scope) } : {}),
+  };
+  for (const name of ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TMP", "TEMP", "PI_OFFLINE", "PI_CODING_AGENT_DIR"] as const) {
+    if (process.env[name] !== undefined) environment[name] = process.env[name];
+  }
+  return environment;
+}
+
 export async function runSubagent(options: {
   invocation: { command: string; args: string[] };
   args: string[];
@@ -62,8 +74,7 @@ export async function runSubagent(options: {
     const child = spawn(options.invocation.command, [...options.invocation.args, ...options.args], {
       cwd: options.cwd, shell: false, detached: grouped,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, PIEXIS_SUBAGENT_DEPTH: String(options.depth),
-        ...(options.scope ? { PIEXIS_SUBAGENT_SCOPE: JSON.stringify(options.scope) } : {}) },
+      env: subagentEnvironment(options.depth, options.scope),
     });
     let buffer = "", bytes = 0, timer: NodeJS.Timeout | undefined, failure: Error | undefined;
     let closed = false;
