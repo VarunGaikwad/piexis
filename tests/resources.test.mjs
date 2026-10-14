@@ -53,14 +53,17 @@ test("UI renders without mode controls or permission status dependencies", async
   await handlers.get("session_start")({}, ctx);
   for (const width of [60, 120]) {
     assert.doesNotMatch(header.render(width).join("\n"), /Alt\+M|\/plan|permission/i);
-    const dashboard = footer.render(width).join("\n");
-    for (const value of [/ready/, /main/, /test-model/, /think off/, /ctx .*12%/]) {
+    const rows = footer.render(width);
+    assert.equal(rows.length, 2);
+    const dashboard = rows.join("\n");
+    for (const value of [/ready/, /main/, /test-model/, /ctx .*12%/]) {
       assert.match(dashboard, value);
     }
   }
+  assert.match(footer.render(120).join("\n"), /think off/);
   await handlers.get("tool_call")({ toolName: "read" });
-  assert.match(footer.render(120)[0], /read/);
+  assert.match(footer.render(120)[1], /read/);
   await handlers.get("agent_end")();
-  assert.match(footer.render(120)[0], /ready/);
+  assert.match(footer.render(120)[1], /ready/);
   footer.dispose();
 });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,6 +39,7 @@ test("UI tip JSON reload bypasses Pi-loader legacy data and rejects invalid tips
     await writeFile(asset, JSON.stringify(["Legacy cached tip"]));
     await writeFile(join(root, "lib", "agent-config.ts"), await readFile(new URL("../lib/agent-config.ts", import.meta.url), "utf8"));
     await writeFile(join(root, "lib", "agents.ts"), await readFile(new URL("../lib/agents.ts", import.meta.url), "utf8"));
+    await copyFile(new URL("../lib/ui-git.ts", import.meta.url), join(root, "lib", "ui-git.ts"));
     await writeFile(entry, 'import tips from "../lib/ui-tips.json" with { type: "json" }; export default () => tips;');
     assert.deepEqual((await load())(), ["Legacy cached tip"]);
 

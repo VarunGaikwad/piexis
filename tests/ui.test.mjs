@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { access, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +21,9 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
   let header;
   let title;
   let entries = [];
+  let entryReads = 0;
   let sessionEntries;
+  let sessionHeader;
   let branch = "main";
   const statuses = new Map();
   let context = { percent: 25, tokens: 50_000, contextWindow: 200_000 };
@@ -28,7 +32,7 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
     cwd: "/projects/demo",
     isProjectTrusted: () => true,
     model: { id: "gpt-5.4" },
-    sessionManager: { getBranch: () => entries, getEntries: () => sessionEntries ?? entries },
+    sessionManager: { getBranch: () => entries, getEntries: () => { entryReads++; return sessionEntries ?? entries; }, getHeader: () => sessionHeader },
     getContextUsage: () => context,
     ui: {
       setTitle: (value) => { title = value; },
@@ -57,6 +61,7 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
     title: () => title,
     setEntries: (value) => { entries = value; },
     setSessionEntries: (value) => { sessionEntries = value; },
+    setSessionHeader: (value) => { sessionHeader = value; },
     setContext: (value) => { context = value; },
     setBranch: (value) => { branch = value; },
     setAgent: (value) => { statuses.set("piexis-agent", value); },
@@ -70,6 +75,7 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
     },
     setThinking: (value) => { thinking = value; },
     renders: () => renders,
+    entryReads: () => entryReads,
     branchChanged: () => branchChanged(),
     dispose: () => footer.dispose(),
     unsubscribed: () => unsubscribed,
@@ -287,7 +293,7 @@ test("natural-language skill tips cover bundled skills without explicit-only fla
   assert.match(instructions, /disable-model-invocation: true/);
 });
 
-test("dashboard shows branch totals, full model, thinking, context and cost", async (t) => {
+test("dashboard shows session totals, full model, thinking, context and cost", async (t) => {
   const f = fixture();
   f.setEntries([
     { type: "message", message: { role: "user" } },
@@ -298,30 +304,93 @@ test("dashboard shows branch totals, full model, thinking, context and cost", as
   t.after(() => f.dispose());
   assert.equal(f.title(), "π demo");
   const text = f.render().join("\n");
-  for (const expected of ["● ready", "gpt-5.4", "think high", "⎇ main", "25%", "50.0k/200.0k", "↑1.5k ↓300", "cache 67%", "$0.03"]) {
+  for (const expected of ["● ready", "gpt-5.4", "think high", "ctx ▰▰▱▱▱▱▱▱ 25%", "of 200k", "💬 1", "↓ 6.0k in ↑ 300 out", "cache R 4.0k W 500 (67% hit)", "$0.030"]) {
     assert.ok(text.includes(expected), expected);
   }
-  assert.match(text, /ctx ━{3}─{9}/);
-  assert.match(f.render()[1], /\$0\.03$/);
+  assert.match(text, /ctx ▰{2}▱{6}/);
+  assert.match(f.render()[1], /\$0\.030$/);
   f.setEntries([assistant(20, 10, 0, 0, 0)]);
-  assert.match(f.render().join("\n"), /↑20 ↓10/);
-  assert.doesNotMatch(f.render().join("\n"), /↑1.5k|cache 67%/);
+  await f.emit("message_end");
+  assert.match(f.render().join("\n"), /↓ 20 in ↑ 10 out/);
+  assert.doesNotMatch(f.render().join("\n"), /6\.0k/);
+  assert.match(f.render().join("\n"), /cache R 0 W 0 \(0% hit\)/);
 });
 
-test("footer includes tool-result usage once and follows the active branch", async (t) => {
+test("footer includes tool-result usage once without recounting nested details", async (t) => {
   const f = fixture();
   const main = assistant(100, 20, 0, 0, 0.01);
   const child = assistant(50, 10, 0, 0, 0.02);
   child.message.role = "toolResult";
   child.message.toolName = "subagent";
-  child.message.details = { usage: child.message.usage };
+  main.message.model = "main-model";
+  child.message.details = { usage: child.message.usage, model: "provider/child-model" };
   f.setEntries([main, child, { type: "message", message: { role: "toolResult" } }]);
   await f.emit("session_start");
   t.after(() => f.dispose());
-  assert.match(f.render()[1], /↑150 ↓30.*\$0\.03$/);
+  assert.match(f.render()[1], /↓ 150 in ↑ 30 out.*\$0\.030$/);
   assert.deepEqual(f.render(), f.render());
+  assert.match(f.render(240).join("\n"), /models main-model, child-model/);
   f.setEntries([main]);
-  assert.match(f.render()[1], /↑100 ↓20.*\$0\.01$/);
+  await f.emit("message_end");
+  assert.match(f.render()[1], /↓ 100 in ↑ 20 out.*\$0\.010$/);
+});
+
+test("footer totals use the session, not the active branch", async (t) => {
+  const f = fixture();
+  f.setEntries([assistant(1, 1, 0, 0, 0.001)]);
+  f.setSessionEntries([assistant(100, 20, 0, 0, 0.020)]);
+  await f.emit("session_start");
+  t.after(() => f.dispose());
+  assert.match(f.render()[1], /↓ 100 in ↑ 20 out.*\$0\.020$/);
+});
+
+test("footer reports session model history and honest elapsed time", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 10_000 });
+  const f = fixture();
+  const first = assistant(10, 2, 3, 4, 0.001);
+  first.message.model = "older";
+  first.timestamp = new Date(5_000).toISOString();
+  const second = assistant(20, 3, 0, 0, 0.002);
+  second.message.model = "gpt-5.4";
+  f.setEntries([first, second]);
+  await f.emit("session_start");
+  t.after(() => f.dispose());
+  const text = f.render(160).join("\n");
+  assert.match(text, /↓ 37 in ↑ 5 out/);
+  assert.match(text, /cache R 3 W 4 \(8% hit\)/);
+  assert.match(text, /⏱ 5s elapsed/);
+  assert.match(text, /models older, gpt-5\.4/);
+  assert.match(text, /\$0\.003/);
+  f.ctx.model = { id: "selected", name: "Selected Model" };
+  await f.emit("model_select");
+  assert.match(f.render(240)[0], /Selected Model/);
+  assert.doesNotMatch(f.render(240)[0], /older|gpt-5\.4/);
+  f.setSessionHeader({ timestamp: new Date(0).toISOString() });
+  t.mock.timers.tick(3_600_000);
+  await f.emit("session_tree");
+  assert.match(f.render(240)[1], /⏱ 1h0m elapsed/);
+});
+
+test("footer integrates asynchronous Git dirtiness and tracked diff totals", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "piexis-footer-git-"));
+  const f = fixture();
+  t.after(async () => { f.dispose(); await rm(cwd, { recursive: true, force: true }); });
+  const run = (...args) => promisify(execFile)("git", args, { cwd });
+  await run("init", "-q");
+  await run("config", "user.email", "test@example.invalid");
+  await run("config", "user.name", "Test");
+  await writeFile(join(cwd, "file.txt"), "old\n");
+  await run("add", "file.txt");
+  await run("commit", "-qm", "base");
+  await writeFile(join(cwd, "file.txt"), "new\nextra\n");
+  f.ctx.cwd = cwd;
+  await f.emit("session_start");
+  const deadline = Date.now() + 5_000;
+  while (!f.render(320)[1].includes("+2 −1") && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.match(f.render(320)[0], /⎇ .* ●/);
+  assert.match(f.render(320)[1], /\+2 −1/);
 });
 
 test("footer shows live running and queued subagents without exceeding terminal width", async (t) => {
@@ -353,11 +422,11 @@ test("two-row layouts fit every width and preserve core fields at 40 columns", a
     }
   }
   const narrow = f.render(40).join("\n");
-  for (const label of ["agent:orchestrator", "● ready", "gpt-5.4", "ctx", "25%", "$0.0000"]) {
+  for (const label of ["agent:orchestrator", "● ready", "gpt-5.4", "ctx", "25%", "$0.000"]) {
     assert.ok(narrow.includes(label), label);
   }
-  assert.doesNotMatch(narrow, /Alt\+A|prompts|cache|think high|main/);
-  assert.match(f.render(160)[0], /gpt-5\.4.*think high.*main.*0 prompts.*Alt\+A/);
+  assert.doesNotMatch(narrow, /cache/);
+  assert.match(f.render(160)[0], /gpt-5\.4.*think high.*💬 0/);
 });
 
 test("agent routing mode is live on wide layouts and yields to the profile when narrow", async (t) => {
@@ -366,13 +435,13 @@ test("agent routing mode is live on wide layouts and yields to the profile when 
   f.setAgentMode("auto");
   await f.emit("session_start");
   t.after(() => f.dispose());
-  assert.match(f.render(160)[0], /agent:orchestrator \(auto\)/);
-  assert.match(f.render(40)[0], /agent:orchestrator/);
-  assert.doesNotMatch(f.render(40)[0], /\(auto\)/);
+  assert.match(f.render(160)[1], /agent:orchestrator \(auto\)/);
+  assert.match(f.render(40)[1], /agent:orchestrator/);
+  assert.doesNotMatch(f.render(40)[1], /\(auto\)/);
   f.setAgentMode("manual");
-  assert.match(f.render(160)[0], /agent:orchestrator \(manual\)/);
+  assert.match(f.render(160)[1], /agent:orchestrator \(manual\)/);
   f.setAgentMode(undefined);
-  assert.doesNotMatch(f.render(160)[0], /agent:orchestrator \(/);
+  assert.doesNotMatch(f.render(160)[1], /agent:orchestrator \(/);
   for (let width = 0; width <= 160; width++) {
     for (const line of f.render(width)) assert.ok(visibleWidth(line) <= width, `${width}: ${line}`);
   }
@@ -397,14 +466,18 @@ test("long styled Unicode fields shrink independently without hiding core status
   assert.match(narrow, /agent:orchestrator/);
   assert.match(narrow, /道具/);
   assert.match(narrow, /研究/);
+  assert.match(narrow, /ctx/);
+  assert.match(narrow, /25%/);
+  assert.match(narrow, /\$0\.000/);
   assert.match(narrow, /…/);
-  assert.match(narrow, /25%.*\$0\.0000/);
+  assert.match(narrow, /agent:orchestrator|研究/);
   f.ctx.model = { id: "gpt-5.4" };
   await f.emit("agent_end");
-  assert.match(f.render(160)[0], /gpt-5\.4.*⎇ 研究.*…/);
+  assert.match(f.render(160)[0], /gpt-5\.4/);
   f.ctx.model = undefined;
   f.setBranch(undefined);
-  assert.match(f.render(160)[0], /ready.*—/);
+  assert.match(f.render(160).join("\n"), /ready/);
+  assert.match(f.render(160)[0], /—/);
   assert.doesNotMatch(f.render(160)[0], /⎇/);
 });
 
@@ -416,17 +489,23 @@ test("unknown and oversized context values produce a bounded bar and warning ton
   await f.emit("session_start");
   t.after(() => f.dispose());
   f.setContext({ percent: null, tokens: null, contextWindow: 200_000 });
-  assert.match(f.render().join("\n"), /ctx ─{12} —.*—\/200.0k/);
+  assert.match(f.render().join("\n"), /ctx ▱{8} —.*of 200k/);
   assert.ok(colors.some(([color, value]) => color === "dim" && value === "—"));
   f.setContext(undefined);
-  assert.match(f.render().join("\n"), /—\/—/);
-  for (const [percent, tone] of [[25, "success"], [70, "warning"], [90, "error"], [120, "error"], [-5, "success"]]) {
+  assert.match(f.render().join("\n"), /of —/);
+  f.setContext({ percent: 17, contextWindow: 1_000_000 });
+  assert.match(f.render()[0], /▰▱{7} 17% of 1\.00M/);
+  for (const percent of [NaN, Infinity]) {
+    f.setContext({ percent, contextWindow: 200_000 });
+    assert.match(f.render()[0], /▱{8} —/);
+  }
+  for (const [percent, tone] of [[25, "success"], [50, "warning"], [79, "warning"], [80, "error"], [120, "error"], [-5, "success"]]) {
     f.setContext({ percent, tokens: 240_000, contextWindow: 200_000 });
     colors.length = 0;
     const text = f.render().join("\n");
     assert.ok(colors.some(([color, value]) => color === tone && value === `${percent}%`));
-    if (percent === 120) assert.match(text, /━{12} 120%/);
-    if (percent === -5) assert.match(text, /─{12} -5%/);
+    if (percent === 120) assert.match(text, /▰{8} 120%/);
+    if (percent === -5) assert.match(text, /▱{8} -5%/);
   }
 });
 
@@ -467,13 +546,14 @@ test("prompt count includes restored session history, not tools or assistant tur
   ]);
   await f.emit("session_start");
   try {
-    assert.match(f.render().join("\n"), /2 prompts/);
-    assert.doesNotMatch(f.render(40).join("\n"), /prompts/);
+    assert.match(f.render().join("\n"), /💬 2/);
+    assert.doesNotMatch(f.render(40).join("\n"), /💬/);
     f.setSessionEntries([user, user, user]);
     await f.emit("message_end");
-    assert.match(f.render().join("\n"), /3 prompts/);
+    assert.match(f.render().join("\n"), /💬 3/);
     f.setSessionEntries([]);
-    assert.match(f.render().join("\n"), /0 prompts/);
+    await f.emit("message_end");
+    assert.match(f.render().join("\n"), /💬 0/);
   } finally {
     f.dispose();
   }
@@ -488,15 +568,28 @@ test("spinner redraws only while busy and disposal clears its timer", async (t) 
   t.mock.timers.tick(300);
   assert.equal(f.renders(), ready);
   await f.emit("agent_start");
-  const first = f.render()[0];
+  const first = f.render()[1];
   const busy = f.renders();
   t.mock.timers.tick(100);
   assert.equal(f.renders(), busy + 1);
-  assert.notEqual(f.render()[0], first);
+  assert.notEqual(f.render()[1], first);
   f.dispose();
   const disposed = f.renders();
   t.mock.timers.tick(300);
   assert.equal(f.renders(), disposed);
+});
+
+test("spinner redraw does not rescan session entries", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 0 });
+  const f = fixture();
+  await f.emit("session_start");
+  t.after(() => f.dispose());
+  const reads = f.entryReads();
+  await f.emit("agent_start");
+  const afterStart = f.entryReads();
+  t.mock.timers.tick(300);
+  assert.equal(f.entryReads(), afterStart);
+  assert.ok(afterStart > reads);
 });
 
 test("non-TUI modes do not install terminal components", async () => {

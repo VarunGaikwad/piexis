@@ -1,4 +1,4 @@
-import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { agentConfigCapabilities } from "../lib/agent-config.ts";
 import { hasProjectAgentConfig, loadAgentConfig } from "../lib/agents.ts";
+import { createFooterGitTracker } from "../lib/ui-git.ts";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -25,30 +26,79 @@ const fmt = (n: number) => {
   return `${(n / 1_000_000).toFixed(1)}m`;
 };
 
-type Seg = { text: string; priority: number };
+type FooterTotals = {
+  prompts: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number;
+  models: string[];
+  startedAt?: number;
+};
 
-// Drop optional fields before shortening the last (highest-priority) field.
-function justify(left: string, right: Seg[], sep: string, width: number): string {
-  const segs = [...right];
-  while (segs.length) {
-    const r = segs.map((s) => s.text).join(sep);
-    const gap = width - visibleWidth(left) - visibleWidth(r);
-    if (gap >= 2) return left + " ".repeat(gap) + r;
-    let weakest = 0;
-    segs.forEach((s, i) => {
-      if (s.priority < segs[weakest].priority) weakest = i;
-    });
-    if (segs.length === 1) {
-      const available = width - visibleWidth(left) - 2;
-      if (available > 0) {
-        const text = truncateToWidth(r, available, "…");
-        return left + " ".repeat(width - visibleWidth(left) - visibleWidth(text)) + text;
+function sessionTotals(entries: readonly SessionEntry[], startedAt?: number): FooterTotals {
+  const models = new Set<string>();
+  let prompts = 0, input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
+  let earliest = startedAt;
+  for (const entry of entries) {
+    const timestamp = Date.parse(entry.timestamp);
+    if (earliest === undefined && Number.isFinite(timestamp)) earliest = timestamp;
+    if (entry.type !== "message") continue;
+    if (entry.message.role === "user") prompts++;
+    if (entry.message.role === "assistant" && typeof entry.message.model === "string") models.add(entry.message.model);
+    if (entry.message.role !== "assistant" && entry.message.role !== "toolResult") continue;
+    const usage = entry.message.usage;
+    if (!usage) continue;
+    if (entry.message.role === "toolResult" && entry.message.toolName === "subagent") {
+      const details = entry.message.details;
+      if (details && typeof details === "object" && "model" in details && typeof details.model === "string") {
+        const slash = details.model.indexOf("/");
+        models.add(slash < 0 ? details.model : details.model.slice(slash + 1));
       }
-      break;
     }
-    segs.splice(weakest, 1);
+    input += usage.input ?? 0;
+    output += usage.output ?? 0;
+    cacheRead += usage.cacheRead ?? 0;
+    cacheWrite += usage.cacheWrite ?? 0;
+    cost += usage.cost?.total ?? 0;
   }
-  return truncateToWidth(left, width, "…");
+  return { prompts, input, output, cacheRead, cacheWrite, cost, models: [...models], startedAt: earliest };
+}
+
+function elapsedSince(timestamp: number | undefined): string | undefined {
+  if (timestamp === undefined) return undefined;
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1_000));
+  if (seconds >= 3_600) return `⏱ ${Math.floor(seconds / 3_600)}h${Math.floor(seconds / 60) % 60}m elapsed`;
+  if (seconds >= 60) return `⏱ ${Math.floor(seconds / 60)}m${seconds % 60}s elapsed`;
+  return `⏱ ${seconds}s elapsed`;
+}
+
+type FitField = { text: string; min: number; priority?: number };
+
+// Every field gets its own budget; no long label can consume a core neighbour.
+function fitFields(fields: FitField[], sep: string, width: number): string {
+  const kept = [...fields];
+  while (kept.length > 1 && kept.reduce((n, field) => n + visibleWidth(field.text), 0) + visibleWidth(sep) * (kept.length - 1) > width) {
+    let weakest = -1;
+    kept.forEach((field, index) => {
+      if (field.priority !== undefined && (weakest < 0 || field.priority < kept[weakest].priority!)) weakest = index;
+    });
+    if (weakest < 0) break;
+    kept.splice(weakest, 1);
+  }
+  let remaining = Math.max(0, width - visibleWidth(sep) * Math.max(0, kept.length - 1));
+  return truncateToWidth(kept.map((field, index) => {
+    const laterMinimum = kept.slice(index + 1).reduce((n, next) => n + Math.min(next.min, visibleWidth(next.text)), 0);
+    const budget = Math.min(visibleWidth(field.text), Math.max(0, remaining - laterMinimum));
+    remaining -= budget;
+    return truncateToWidth(field.text, budget, "…");
+  }).join(sep), width, "…");
+}
+
+function capacityLabel(contextWindow: number | null | undefined): string {
+  if (contextWindow == null || !Number.isFinite(contextWindow)) return "of —";
+  return contextWindow < 1_000_000 ? `of ${Math.round(contextWindow / 1_000)}k` : `of ${(contextWindow / 1_000_000).toFixed(2)}M`;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -68,6 +118,8 @@ export default function (pi: ExtensionAPI) {
   let redraw = () => {};
   let remainingTips: typeof tipList = [];
   let agentSetupTips: string[] = [];
+  let refreshFooterMetrics = () => {};
+  let refreshGit = () => {};
 
   function update() {
     redraw();
@@ -77,6 +129,8 @@ export default function (pi: ExtensionAPI) {
     state = "ready";
     activeTool = "";
     redraw = () => {};
+    refreshFooterMetrics = () => {};
+    refreshGit = () => {};
     if (ctx.mode !== "tui") return;
 
     const project = basename(ctx.cwd);
@@ -147,7 +201,20 @@ export default function (pi: ExtensionAPI) {
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       redraw = () => tui.requestRender();
-      const unsubscribe = footerData.onBranchChange(() => tui.requestRender());
+      const getSessionStart = () => {
+        const timestamp = ctx.sessionManager.getHeader?.()?.timestamp;
+        const parsed = timestamp ? Date.parse(timestamp) : NaN;
+        return Number.isFinite(parsed) ? parsed : undefined;
+      };
+      let totals = sessionTotals(ctx.sessionManager.getEntries(), getSessionStart());
+      refreshFooterMetrics = () => { totals = sessionTotals(ctx.sessionManager.getEntries(), getSessionStart()); };
+      const git = createFooterGitTracker(ctx.cwd, () => tui.requestRender());
+      git.refresh();
+      const unsubscribe = footerData.onBranchChange(() => {
+        git.refresh();
+        tui.requestRender();
+      });
+      refreshGit = () => git.refresh();
 
       // Spinner animation, only while busy.
       const timer = setInterval(() => {
@@ -163,73 +230,50 @@ export default function (pi: ExtensionAPI) {
           const dim = (s: string) => theme.fg("dim", s);
           const muted = (s: string) => theme.fg("muted", s);
           const sep = dim(" · ");
-          const prompts = ctx.sessionManager.getEntries().filter(
-            (entry) => entry.type === "message" && entry.message.role === "user"
-          ).length;
-
-          let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
-          for (const entry of ctx.sessionManager.getBranch()) {
-            if (entry.type !== "message" || (entry.message.role !== "assistant" && entry.message.role !== "toolResult")) continue;
-            const u = entry.message.usage;
-            if (!u) continue;
-            input += u.input;
-            output += u.output;
-            cacheRead += u.cacheRead;
-            cacheWrite += u.cacheWrite;
-            cost += u.cost?.total ?? 0;
-          }
-
           const frame = SPINNER[Math.floor(Date.now() / 100) % SPINNER.length];
           const activity = state === "tool" ? `${frame} ${activeTool}`
             : state === "thinking" ? `${frame} thinking` : "● ready";
           const agent = footerData.getExtensionStatuses?.().get("piexis-agent");
           const agentMode = footerData.getExtensionStatuses?.().get("piexis-agent-mode");
-          const branch = footerData.getGitBranch();
-          // Reserve a small model slot; long tool names must not displace the profile.
-          const modelReserve = width >= 32 ? 9 : 0;
-          const fullProfile = agent && agentMode ? `${agent} (${agentMode})` : agent ?? "";
-          // Mode is optional; the profile itself remains ahead of activity and right-side fields.
-          const profileText = agent && width >= 48 && visibleWidth(fullProfile) + 6 + modelReserve <= width
-            ? fullProfile
-            : agent ?? "";
-          const profileLimit = Math.max(0, width - 1);
-          const profile = profileText
-            ? theme.fg("accent", truncateToWidth(profileText, profileLimit, "…")) + (profileLimit > 0 ? sep : "")
-            : "";
-          const activityWidth = Math.max(0, Math.min(24, width - visibleWidth(profile) - modelReserve));
-          const left1 = profile + (activityWidth ? theme.fg(state === "ready" ? "success" : "accent",
-            truncateToWidth(activity, activityWidth, "…")) : "");
-          const row1 = justify(left1, [
-            { text: ctx.model?.id ?? "—", priority: 5 },
-            { text: muted(`think ${pi.getThinkingLevel()}`), priority: 4 },
-            ...(branch ? [{ text: dim(`⎇ ${truncateToWidth(branch, Math.max(8, Math.floor(width / 4)), "…")}`), priority: 3 }] : []),
-            { text: dim(`${prompts} prompts`), priority: 2 },
-            ...(agent ? [{ text: dim("[Alt+A]"), priority: 1 }] : [])
+          const modelName = ctx.model?.name ?? ctx.model?.id ?? "—";
+          const usage = ctx.getContextUsage();
+          const reportedPercent = usage?.percent;
+          const pct = reportedPercent != null && Number.isFinite(reportedPercent) ? reportedPercent : null;
+          const tone = pct == null ? "dim" : pct >= 80 ? "error" : pct >= 50 ? "warning" : "success";
+          const pctText = pct == null ? "—" : `${Math.round(pct)}%`;
+          // The bar is bounded even if a provider reports an impossible percentage.
+          const cells = Math.max(0, Math.min(8, Math.floor((width - 18) / 2)));
+          const filled = pct == null ? 0 : Math.round((Math.min(100, Math.max(0, pct)) / 100) * cells);
+          const context = `${muted("ctx")} ${theme.fg(tone, "▰".repeat(filled))}${dim("▱".repeat(cells - filled))} ${theme.fg(tone, pctText)} ${dim(capacityLabel(usage?.contextWindow))}`;
+          const stats = git.getStats();
+          const branch = stats?.branch ?? footerData.getGitBranch?.();
+          const project = `${basename(ctx.cwd)}${branch ? ` ⎇ ${branch}${stats?.dirty ? " ●" : ""}` : ""}`;
+          const projectReserve = width >= 56 ? 16 : 0;
+          const modelBudget = Math.max(4, width - visibleWidth(context) - visibleWidth(sep) - projectReserve);
+          const row1 = fitFields([
+            { text: truncateToWidth(modelName, modelBudget, "…"), min: 4 },
+            { text: muted(`think ${pi.getThinkingLevel()}`), min: 0, priority: 2 },
+            { text: context, min: visibleWidth(context) },
+            { text: dim(`💬 ${totals.prompts}`), min: 0, priority: 1 },
+            ...(projectReserve ? [{ text: dim(project), min: 0 }] : [])
           ], sep, width);
 
-          const usage = ctx.getContextUsage();
-          const pct = usage?.percent ?? null;
-          const tone = pct == null ? "dim" : pct >= 90 ? "error" : pct >= 70 ? "warning" : "success";
-          const pctText = pct == null ? "—" : `${Math.round(pct)}%`;
-          const costText = `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}`;
-          const barWidth = Math.min(12, Math.max(0,
-            width - visibleWidth(`ctx  ${pctText}`) - visibleWidth(costText) - 2));
-          const filled = pct == null ? 0 : Math.round((Math.min(100, Math.max(0, pct)) / 100) * barWidth);
-          const bar = theme.fg(tone, "━".repeat(filled)) + dim("─".repeat(barWidth - filled));
-          const cap = usage
-            ? `${usage.tokens == null ? "—" : fmt(usage.tokens)}/${fmt(usage.contextWindow)}`
-            : "—/—";
-          const context = `${muted("ctx")} ${barWidth ? bar + " " : ""}${theme.fg(tone, pctText)}`;
-          const tokens = muted(`↑${fmt(input)} ↓${fmt(output)}`);
-          const promptTotal = input + cacheRead + cacheWrite;
-          const hit = promptTotal > 0 ? Math.round((cacheRead / promptTotal) * 100) : null;
-          // Add capacity only when it leaves room for the basic token totals and cost.
-          const showCapacity = visibleWidth(context + " " + cap + tokens + costText) + 7 <= width;
-          const left2 = context + (showCapacity ? " " + dim(cap) : "");
-          const row2 = justify(left2, [
-            { text: tokens, priority: 2 },
-            ...(hit == null ? [] : [{ text: dim(`cache ${hit}%`), priority: 1 }]),
-            { text: muted(costText), priority: 3 }
+          const inclusiveInput = totals.input + totals.cacheRead + totals.cacheWrite;
+          const hitBase = totals.input + totals.cacheRead + totals.cacheWrite;
+          const hit = hitBase > 0 ? Math.round((totals.cacheRead / hitBase) * 100) : 0;
+          const costText = `$${totals.cost.toFixed(3)}`;
+          const elapsed = elapsedSince(totals.startedAt);
+          const history = totals.models.length > 1 ? totals.models : [];
+          const row2 = fitFields([
+            ...(agent ? [{ text: theme.fg("accent", agentMode && width >= 64 ? `${agent} (${agentMode})` : agent), min: Math.min(visibleWidth(agent), 18) }] : []),
+            { text: theme.fg(state === "ready" ? "success" : "accent", activity), min: 8 },
+            { text: muted(`↓ ${fmt(inclusiveInput)} in ↑ ${fmt(totals.output)} out`), min: 0, priority: 5 },
+            { text: dim(`cache R ${fmt(totals.cacheRead)} W ${fmt(totals.cacheWrite)} (${hit}% hit)`), min: 0, priority: 4 },
+            ...(elapsed ? [{ text: dim(elapsed), min: 0, priority: 3 }] : []),
+            ...(stats && (stats.added || stats.removed) ? [{ text: dim(`+${stats.added} −${stats.removed}`), min: 0, priority: 2 }] : []),
+            ...(history.length > 0 ? [{ text: dim(`models ${history.join(", ")}`), min: 0, priority: 1 }] : []),
+            ...(agent ? [{ text: dim("[Alt+A]"), min: 0, priority: 0 }] : []),
+            { text: muted(costText), min: visibleWidth(costText) }
           ], sep, width);
 
           const children = footerData.getExtensionStatuses?.().get("piexis-subagents");
@@ -241,7 +285,10 @@ export default function (pi: ExtensionAPI) {
         dispose() {
           clearInterval(timer);
           unsubscribe();
+          git.dispose();
           redraw = () => {};
+          refreshFooterMetrics = () => {};
+          refreshGit = () => {};
         }
       };
     });
@@ -252,6 +299,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_start", async () => {
     state = "thinking";
     activeTool = "";
+    refreshFooterMetrics();
     update();
   });
 
@@ -262,10 +310,25 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("message_end", async () => {
+    refreshFooterMetrics();
+    refreshGit();
     update();
   });
 
   pi.on("session_compact", async () => {
+    refreshFooterMetrics();
+    refreshGit();
+    update();
+  });
+
+  pi.on("session_tree", async () => {
+    refreshFooterMetrics();
+    update();
+  });
+
+  pi.on("tool_execution_end", async () => {
+    refreshFooterMetrics();
+    refreshGit();
     update();
   });
 
@@ -278,10 +341,13 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_end", async () => {
     state = "ready";
     activeTool = "";
+    refreshFooterMetrics();
+    refreshGit();
     update();
   });
 
   pi.on("model_select", async () => {
+    refreshFooterMetrics();
     update();
   });
 
