@@ -14,7 +14,8 @@ export default function accessGuard(pi: ExtensionAPI) {
     if (!pathTools.has(event.toolName)) return;
     const path = input.path;
     if (typeof path !== "string") return;
-    const reason = await deniedPath(ctx.cwd, path);
+    const mode = event.toolName === "edit" || event.toolName === "write" ? "write" : "read";
+    const reason = await deniedPath(ctx.cwd, path, mode);
     return reason ? { block: true, reason: `Access to ${path} denied: ${reason}.` } : undefined;
   });
 }

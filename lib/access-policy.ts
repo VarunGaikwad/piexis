@@ -72,15 +72,18 @@ async function directoryAt(path: string): Promise<boolean> {
 }
 
 /** Best-effort project access policy for Pi file tools. It is not a sandbox. */
-export async function deniedPath(cwd: string, requested: string): Promise<string | undefined> {
+export async function deniedPath(cwd: string, requested: string, mode: "read" | "write" = "write"): Promise<string | undefined> {
   const root = await realpath(cwd);
   const absolute = resolve(root, requested);
-  if (!isWithin(root, absolute)) return "outside the project";
+  if (mode === "write" && !isWithin(root, absolute)) return "outside the project";
+  let canonical = absolute;
   try {
-    if (!isWithin(root, await realpath(absolute))) return "symlink escapes the project";
+    canonical = await realpath(absolute);
+    if (mode === "write" && !isWithin(root, canonical)) return "symlink escapes the project";
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  const relativePath = relative(root, absolute).split(sep).join("/");
-  if (relativePath.split("/").some((part) => part === ".env" || part.startsWith(".env."))) return "environment files are protected";
+  if ([absolute, canonical].some((path) => path.split(sep).some((part) => part === ".env" || part.startsWith(".env.")))) return "environment files are protected";
+  // External documentation and installed Pi resources must remain readable.
+  if (!isWithin(root, absolute)) return undefined;
   const directory = await directoryAt(absolute);
   for (const name of [".gitignore", ".claudeignore"] as const) {
     let ignored = false;
