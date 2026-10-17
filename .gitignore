@@ -3,6 +3,9 @@ node_modules/
 .pnpm-store/
 .yarn/
 
+# User-provided sounds (Mixkit forbids tool/source redistribution)
+/audio/*.wav
+
 # Build output
 dist/
 build/

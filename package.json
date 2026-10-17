@@ -50,6 +50,7 @@
       "./extensions/ask-question.ts",
       "./extensions/ui.ts",
       "./extensions/recommended-tools.ts",
+      "./extensions/sound.ts",
       "./extensions/access-guard.ts",
       "./extensions/agents.ts",
       "./extensions/webui.ts"

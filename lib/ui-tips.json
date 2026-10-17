@@ -25,7 +25,7 @@
   { "category": "Planning", "text": "Name relevant files, constraints, and expected behavior in your prompt." },
   { "category": "Getting started", "text": "Choose Enable if grep/find/ls setup is offered to save your project preference." },
   { "category": "Planning", "text": "Give acceptance criteria when asking for a feature so the agent knows when to stop." },
-  { "category": "Getting started", "text": "Use /help to discover Pi commands and keyboard shortcuts." },
+  { "category": "Getting started", "text": "Use /help to discover commands; /sound configures sound notifications." },
   { "category": "Getting started", "text": "Use /reload after updating PieXis resources." },
   { "category": "Interaction", "text": "In AskQuestion, use arrows to navigate, Space to toggle, Enter to confirm, and Esc to cancel." },
   { "category": "Interaction", "text": "In AskQuestion, Tab revisits related questions without losing your drafts." },

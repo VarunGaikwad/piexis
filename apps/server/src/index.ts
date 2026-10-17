@@ -1,5 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { resolveSoundFile } from "../../../lib/sound.ts";
+import { soundEvents, type SoundEvent } from "../../../packages/shared/src/sound.ts";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
@@ -46,6 +50,16 @@ const manager = new SessionManager(workspace, (session, type, data) => {
 await app.register(websocket);
 await app.register(fastifyStatic, { root: webRoot, wildcard: false });
 app.get("/health", async () => ({ ok: true }));
+app.get("/sounds/:event.wav", async (request, reply) => {
+  const suppliedToken = (request.query as { token?: string }).token;
+  if (typeof suppliedToken !== "string" || !secureEqual(suppliedToken, token)) return reply.code(401).send({ error: "Unauthorized" });
+  const event = (request.params as { event: string }).event;
+  if (!soundEvents.includes(event as SoundEvent)) return reply.code(404).send({ error: "Unknown sound" });
+  try {
+    const file = await resolveSoundFile(process.env.PI_CODING_AGENT_DIR || path.join(homedir(), ".pi", "agent"), event as SoundEvent);
+    return reply.header("Cache-Control", "private, no-store").type("audio/wav").send(await readFile(file));
+  } catch { return reply.code(404).send({ error: "Local sound file unavailable" }); }
+});
 app.get("/ws", { websocket: true }, (socket, request) => {
   const origin = request.headers.origin;
   const suppliedToken = (request.query as { token?: string }).token;

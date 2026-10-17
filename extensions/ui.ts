@@ -178,7 +178,7 @@ export default function (pi: ExtensionAPI) {
           ...selectedTips.map((tip) =>
             `${theme.fg("accent", `[${tip.category}]`)} ${theme.fg("muted", tip.text)}`
           ),
-          theme.fg("dim", "/help · /summary · /commit")
+          theme.fg("dim", "/help · /sound · /summary · /commit")
         ];
         const tipWidth = width - WORDMARK_WIDTH - 3;
         if (tipWidth >= 32) {

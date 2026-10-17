@@ -101,7 +101,7 @@ test("startup header keeps the wordmark left and full usage tips right", async (
     "Get started with PieXis",
     "Questions, skills, prompts & stats.",
     ...tipList.slice(0, 3).map(displayTip),
-    "/help · /summary · /commit"
+    "/help · /sound · /summary · /commit"
   ];
   const f = fixture();
   await f.emit("session_start");

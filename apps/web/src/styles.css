@@ -262,6 +262,10 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible, [role="tab"
   padding: .35rem;
   font-size: .76rem;
 }
+.sound-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+}
 .panel-toggle:hover, .icon-button:hover  {
   border-color: var(--line);
   background: var(--surface-hover);

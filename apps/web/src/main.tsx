@@ -41,7 +41,7 @@ function PanelSheet({ panel, open, onOpenChange, onCloseFocus, children }: Panel
 }
 
 function App() {
-  const { state, connected, send, markPromptSent, clearError, clearDialog } = usePixis();
+  const { state, connected, send, markPromptSent, clearError, clearDialog, soundEnabled, soundError, toggleSounds } = usePixis();
   const [panel, setPanel] = useState<Panel>("");
   const [hideSessions, setHideSessions] = useState(false);
   const [hideContext, setHideContext] = useState(false);
@@ -92,6 +92,7 @@ function App() {
             <strong>{current?.name || "Starting PIXIS"}</strong>
             <span>{current?.model || "Pi session"} · {current?.status || "connecting"}</span>
           </div>
+          <button className="panel-toggle sound-toggle" aria-pressed={soundEnabled} title={soundError || "Sound notifications (click to enable and preview)"} onClick={() => { void toggleSounds(); }}>{soundEnabled ? "Mute sounds" : "Enable sounds"}</button>
           <button ref={contextTrigger} className="panel-toggle context-toggle" onClick={() => setPanel("context")} aria-label="Open workspace"><PanelIcon /><span>Workspace</span></button>
           <button className="panel-toggle desktop-context-toggle" onClick={() => setHideContext(!hideContext)} aria-label={`${hideContext ? "Show" : "Hide"} workspace`} aria-expanded={!hideContext}><PanelIcon /></button>
         </header>
@@ -99,6 +100,7 @@ function App() {
           const element = event.currentTarget;
           followTranscript.current = element.scrollHeight - element.scrollTop - element.clientHeight < 64;
         }}><Transcript messages={view.messages} stream={view.stream} /></div>
+        {soundError && <div className="error" role="status">Sound notifications: {soundError}</div>}
         {state.error && <div className="error" role="alert">{state.error}<button onClick={clearError} aria-label="Dismiss error"><XIcon /></button></div>}
         <Composer
           connected={connected}
