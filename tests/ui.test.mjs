@@ -20,6 +20,7 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
   let footer;
   let header;
   let title;
+  let sessionName;
   let entries = [];
   let entryReads = 0;
   let sessionEntries;
@@ -51,7 +52,8 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
   };
   uiExtension({
     on: (name, handler) => { handlers.set(name, handler); },
-    getThinkingLevel: () => thinking
+    getThinkingLevel: () => thinking,
+    getSessionName: () => sessionName
   });
   return {
     ctx,
@@ -59,6 +61,7 @@ function fixture(mode = "tui", theme = { fg: (_color, text) => text, bold: (text
     render: (width = 160) => footer.render(width),
     header: (width) => header.render(width),
     title: () => title,
+    setSessionName: (value) => { sessionName = value; },
     setEntries: (value) => { entries = value; },
     setSessionEntries: (value) => { sessionEntries = value; },
     setSessionHeader: (value) => { sessionHeader = value; },
@@ -87,6 +90,61 @@ function assistant(input, output, cacheRead, cacheWrite, cost) {
   return { type: "message", message: { role: "assistant", usage: { input, output, cacheRead, cacheWrite, cost: { total: cost } } } };
 }
 
+test("terminal title uses the existing session name on startup and session switches", async () => {
+  const f = fixture();
+  try {
+    for (const [reason, name] of [["startup", "研究 🚀"], ["resume", "Restored session"], ["new", undefined], ["fork", "Forked session"], ["reload", "Reloaded session"]]) {
+      f.setSessionName(name);
+      await f.emit("session_start", { reason });
+      assert.equal(f.title(), `π ${name || "Untitled session"}`);
+      f.dispose();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test("terminal title recovers from native updates after session binding and stops on disposal", async (t) => {
+  const intervals = new Map();
+  t.mock.method(globalThis, "setInterval", (callback, delay) => {
+    const timer = { unref() {} };
+    intervals.set(timer, { callback, delay });
+    return timer;
+  });
+  t.mock.method(globalThis, "clearInterval", (timer) => intervals.delete(timer));
+  const f = fixture();
+  f.setSessionName("Active session");
+  await f.emit("session_start");
+  try {
+    const tick = [...intervals.values()].find(({ delay }) => delay === 100).callback;
+    f.ctx.ui.setTitle("native title after binding");
+    const renders = f.renders();
+    for (let i = 0; i < 10; i++) tick();
+    assert.equal(f.title(), "π Active session");
+    assert.equal(f.renders(), renders, "title refresh does not redraw an idle TUI");
+  } finally {
+    f.dispose();
+  }
+  assert.equal([...intervals.values()].some(({ delay }) => delay === 100), false);
+});
+
+test("terminal title follows session renames and clearing the name", async () => {
+  const f = fixture();
+  await f.emit("session_start");
+  try {
+    assert.equal(f.title(), "π Untitled session");
+    for (const name of ["Renamed session", "", undefined]) {
+      f.setSessionName(name);
+      // Pi's native title update runs before the extension notification.
+      f.ctx.ui.setTitle(`native title - ${name ?? "demo"}`);
+      await f.emit("session_info_changed", { name });
+      assert.equal(f.title(), `π ${name || "Untitled session"}`);
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
 test("startup header keeps the wordmark left and full usage tips right", async (t) => {
   t.mock.method(Math, "random", () => 0);
   const wordmark = [
@@ -114,7 +172,7 @@ test("startup header keeps the wordmark left and full usage tips right", async (
         assert.equal(header[index].slice(0, column), line.padEnd(column));
       }
       assert.doesNotMatch(header.join("\n"), /demo/);
-      assert.equal(f.title(), "π demo");
+      assert.equal(f.title(), "π Untitled session");
       for (const line of header.slice(wordmark.length)) {
         assert.equal(line.slice(0, artWidth).trim(), "");
       }
@@ -302,7 +360,7 @@ test("dashboard shows session totals, full model, thinking, context and cost", a
   ]);
   await f.emit("session_start");
   t.after(() => f.dispose());
-  assert.equal(f.title(), "π demo");
+  assert.equal(f.title(), "π Untitled session");
   const text = f.render().join("\n");
   for (const expected of ["● ready", "gpt-5.4", "think high", "ctx ▰▰▱▱▱▱▱▱ 25%", "of 200k", "💬 1", "↓ 6.0k in ↑ 300 out", "cache R 4.0k W 500 (67% hit)", "$0.030"]) {
     assert.ok(text.includes(expected), expected);
@@ -597,6 +655,10 @@ test("non-TUI modes do not install terminal components", async () => {
     const f = fixture(mode);
     await f.emit("session_start");
     await f.emit("agent_start");
+    f.setSessionName("Not a terminal title");
+    await f.emit("session_info_changed", { name: "Not a terminal title" });
+    f.setSessionName("");
+    await f.emit("session_info_changed", { name: "" });
     assert.equal(f.hasFooter(), false);
     assert.equal(f.title(), undefined);
   }

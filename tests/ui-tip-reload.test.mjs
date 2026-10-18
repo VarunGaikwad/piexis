@@ -23,7 +23,7 @@ test("UI tip JSON reload bypasses Pi-loader legacy data and rejects invalid tips
   async function render(factory) {
     const handlers = new Map();
     let header;
-    factory({ on(name, handler) { handlers.set(name, handler); } });
+    factory({ on(name, handler) { handlers.set(name, handler); }, getSessionName() {} });
     await handlers.get("session_start")({}, {
       mode: "tui", cwd: "/projects/demo",
       ui: {

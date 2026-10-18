@@ -763,7 +763,7 @@ test("footer reads live agent status after commands, cycling and tree restoratio
         getGitBranch: () => "main", getExtensionStatuses: () => h.statuses, onBranchChange: () => () => {},
       }); },
     });
-    uiExtension({ on(name, handler) { uiHandlers.set(name, handler); }, getThinkingLevel: () => "high" });
+    uiExtension({ on(name, handler) { uiHandlers.set(name, handler); }, getThinkingLevel: () => "high", getSessionName: () => undefined });
     await uiHandlers.get("session_start")({}, h.ctx);
     try {
       assert.doesNotMatch(footer.render(160).join("\n"), /agent:/);

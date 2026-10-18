@@ -33,7 +33,7 @@ test("AskQuestion works independently and retains non-TUI handling", async () =>
 
 test("UI renders without mode controls or permission status dependencies", async () => {
   const handlers = new Map();
-  ui({ on(name, handler) { handlers.set(name, handler); }, getThinkingLevel: () => "off" });
+  ui({ on(name, handler) { handlers.set(name, handler); }, getThinkingLevel: () => "off", getSessionName: () => undefined });
   let header, footer;
   const theme = { fg: (_color, text) => text, bold: (text) => text };
   const ctx = {

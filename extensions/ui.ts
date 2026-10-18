@@ -1,4 +1,4 @@
-import { getAgentDir, type ExtensionAPI, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
@@ -125,6 +125,14 @@ export default function (pi: ExtensionAPI) {
     redraw();
   }
 
+  function updateTitle(ctx: ExtensionContext) {
+    if (ctx.mode === "tui") ctx.ui.setTitle(`π ${pi.getSessionName() || "Untitled session"}`);
+  }
+
+  pi.on("session_info_changed", async (_event, ctx) => {
+    updateTitle(ctx);
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     state = "ready";
     activeTool = "";
@@ -133,7 +141,6 @@ export default function (pi: ExtensionAPI) {
     refreshGit = () => {};
     if (ctx.mode !== "tui") return;
 
-    const project = basename(ctx.cwd);
     agentSetupTips = [];
     try {
       if (ctx.isProjectTrusted() && await hasProjectAgentConfig(ctx.cwd)) {
@@ -158,8 +165,7 @@ export default function (pi: ExtensionAPI) {
       selectedTips.push(remainingTips.splice(remainingTips.indexOf(tip), 1)[0]);
     }
 
-    // Put project info in the terminal tab instead of wasting TUI rows.
-    ctx.ui.setTitle(`π ${project}`);
+    updateTitle(ctx);
 
     // Headers are rendered once at the top of the startup view. A widget would
     // stay attached to the editor forever, making the onboarding copy noisy.
@@ -216,9 +222,14 @@ export default function (pi: ExtensionAPI) {
       });
       refreshGit = () => git.refresh();
 
-      // Spinner animation, only while busy.
+      let titleTicks = 0;
       const timer = setInterval(() => {
         if (state !== "ready") tui.requestRender();
+        // Pi can reset the title after session_start and delayed Windows startup checks.
+        if (++titleTicks >= 10) {
+          titleTicks = 0;
+          updateTitle(ctx);
+        }
       }, 100);
       timer.unref?.();
 
