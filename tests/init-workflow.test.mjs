@@ -19,6 +19,17 @@ test("init writes skill workflow guidance without installing or granting permiss
   assert.match(prompt, /Only create or edit `AGENTS\.md`/);
 });
 
+test("init skips ignored or unavailable optional evidence without bypassing restrictions", async () => {
+  const prompt = await readFile(new URL("prompts/init.md", root), "utf8");
+  assert.match(prompt, /skip it and continue with accessible evidence/);
+  assert.match(prompt, /do not retry through another tool or bypass restrictions/);
+  assert.match(prompt, /Stop only if required guidance cannot be read or `AGENTS\.md` cannot be safely created or updated/);
+  assert.match(prompt, /Use discovery that respects ignore rules/);
+  assert.match(prompt, /do not read excluded files merely because they exist or a reference mentions them/);
+  assert.match(prompt, /Missing, ignored, or denied optional evidence is not a reason to stop/);
+  assert.doesNotMatch(prompt, /If access is denied, explain the limitation and stop/);
+});
+
 test("bundled third-party skills retain provenance and licenses", async () => {
   for (const name of ["caveman", "ponytail"]) {
     await access(new URL(`skills/${name}/LICENSE`, root));

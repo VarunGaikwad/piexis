@@ -14,7 +14,7 @@ $ARGUMENTS
 - Target the current directory. Do not silently switch to a Git ancestor, nested package, or another worktree.
 - Check the working-tree status when Git is available. Preserve unrelated changes, staged work, and intentional deletions; do not reset, clean, stage, or commit anything. If `AGENTS.md` is marked deleted and the user's intent is unclear, ask before recreating it.
 - Only create or edit `AGENTS.md`. Do not repair source, tests, manifests, or other documentation as part of this task.
-- Respect host access restrictions. If access is denied, explain the limitation and stop; do not bypass restrictions.
+- Respect host access restrictions. If a read is denied or a file is unavailable, skip it and continue with accessible evidence; do not retry through another tool or bypass restrictions. Stop only if required guidance cannot be read or `AGENTS.md` cannot be safely created or updated; explain the blocker.
 
 ## 2. Inspect selectively
 
@@ -25,7 +25,7 @@ Read the minimum evidence needed to produce reliable guidance:
 - The project README, package/build manifests, relevant tool configuration, and CI workflows when present.
 - A small representative sample of source files and tests that demonstrates architecture, conventions, and validation workflows. Follow relevant references rather than reading every file.
 
-Exclude secrets, credential files, dependency/vendor directories, generated output, build artifacts, caches, unrelated worktrees, and unrelated large files. Do not dump environment variables or broad configuration directories. Git history may clarify missing guidance, but historical files are not evidence that a command or implementation still exists.
+Exclude files covered by applicable ignore rules, secrets, credential files, dependency/vendor directories, generated output, build artifacts, caches, unrelated worktrees, and unrelated large files. Use discovery that respects ignore rules; do not read excluded files merely because they exist or a reference mentions them. Missing, ignored, or denied optional evidence is not a reason to stop; omit unsupported claims and report consequential gaps. Do not dump environment variables or broad configuration directories. Git history may clarify missing guidance, but historical files are not evidence that a command or implementation still exists.
 
 ## 3. Distill useful project guidance
 
