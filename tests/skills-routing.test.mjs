@@ -20,6 +20,8 @@ const cases = [
   ["Find a skill for deployment.", "find-skills", /discover and install agent skills/i],
   ["Create an Excel workbook.", "xlsx", /spreadsheet/i],
   ["Design the frontend for this dashboard.", "frontend-design", /product web interface/i],
+  ["Open a website and fill out a form.", "agent-browser", /Browser automation CLI for AI agents/i],
+  ["Search local UI/UX guidance for accessible color palettes.", "ui-ux-pro-max", /Searchable local UI\/UX guidance/i],
   ["Keep chat responses brief without losing technical facts.", "caveman", /every technical fact kept/i],
   ["Build the smallest complete solution.", "ponytail", /smallest change that fully solves the task/i],
 ];
@@ -40,15 +42,15 @@ test("active canonical skills do not require removed setup workflows", async () 
   assert.doesNotMatch(text, /issue-tracker\.md/i);
 });
 
-test("only canonical workflows and bundled voice/build skills remain active", async () => {
+test("only canonical workflows and bundled skills remain active", async () => {
   const active = (await readdir(new URL("../skills/", import.meta.url), { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
   assert.deepEqual(active, [
-    "caveman", "code-review", "codebase-design", "diagnosing-bugs", "docx",
+    "agent-browser", "caveman", "code-review", "codebase-design", "diagnosing-bugs", "docx",
     "find-skills", "frontend-design", "grilling", "lean-build", "mcp-builder", "migration", "pdf",
-    "ponytail", "pptx", "safe-refactor", "tdd", "verify-and-stop", "webapp-testing",
+    "ponytail", "pptx", "safe-refactor", "tdd", "ui-ux-pro-max", "verify-and-stop", "webapp-testing",
     "writing-for-agents", "xlsx",
   ]);
 });

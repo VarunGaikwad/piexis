@@ -19,8 +19,7 @@ Restart Pi or run `/reload` after installation. The package loads AskQuestion, a
 - **Access guard** allows reading external files, including installed skills, extensions, and documentation, while blocking direct `edit`/`write` requests outside the project and symlinks that escape it. File tools still block `.env`/`.env.*` paths (including resolved symlink targets) and project paths matched by `.gitignore` or `.claudeignore`. Obvious shell environment-inspection commands are blocked too. This is a best-effort tool guard, not a sandbox: arbitrary shell commands and recursive searches are not fully contained or filtered.
 - **Agents** provides `plan`, `orchestrator`, `debug`, `ask`, and `code` profiles, all callable through the `subagent` tool. Small delegated tasks can automatically use a cheaper model.
 - **Skills** cover implementation, debugging, review, design, refactoring, validation, and document workflows. Bundled **caveman** adds concise chat style; **ponytail** guides the smallest complete coding change. Only their core instructions are included, not upstream hooks or companion skills. Source revisions and licenses live beside each skill.
-- **Prompts** include `/init`, `/commit`, and `/summary`. `/init` adds workflow guidance to `AGENTS.md`: caveman for responses, grilling for clarification questions, and ponytail for building. These are agent instructions, not runtime enforcement.
-
+- **Prompts** include `/init`, `/commit`, and `/summary`. `/init` inspects the current project and makes the smallest justified update to `AGENTS.md`, preserving existing guidance and unrelated work. It adds workflow defaults: caveman for concise chat, grilling before clarification questions, and ponytail for the smallest complete code change alongside task-specific skills. Agents read each matching `SKILL.md` before use, respect explicit user overrides, and report unavailable skills without installing anything. These are agent instructions, not runtime enforcement or tool permissions.
 - **Themes** include warm **orange** and **midnight**, a dark slate palette with cyan, violet, and mint accents. Run `/reload`, then choose a palette in `/settings` → **Theme**.
 
 Caveman and ponytail ship with this package; no separate installation is needed. Their upstream standalone installation commands are:
@@ -31,6 +30,23 @@ npx skills add https://github.com/dietrichgebert/ponytail --skill ponytail
 ```
 
 Avoid loading standalone copies alongside the bundled skills, which can cause name collisions. In Pi, explicitly invoke the bundled skills with `/skill:caveman` and `/skill:ponytail`.
+
+### Browser automation skill
+
+The bundled **agent-browser** skill from [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) covers browser automation, screenshots, form interaction, and web app testing. Invoke it with `/skill:agent-browser` after `/reload`. Its upstream discovery stub loads version-matched usage guidance from the CLI; source revision and Apache-2.0 license are included in `skills/agent-browser/`.
+
+Piexis bundles only the skill, not the CLI or browser binaries. Before using it, install those separately:
+
+```sh
+npm install -g agent-browser
+agent-browser install
+```
+
+### UI/UX design intelligence skill
+
+The bundled **ui-ux-pro-max** skill from [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) adds searchable local UI/UX guidance, palettes, typography, stack recommendations, and design-system generation. Invoke `/skill:ui-ux-pro-max` after `/reload`. It requires Python 3, with no external Python dependencies; Python is not installed by Piexis.
+
+Search scripts, data, references, the source revision, and MIT license are included in `skills/ui-ux-pro-max/`. Command examples use a placeholder for the host-provided installed skill directory, so they also work outside this checkout. Use it for data-backed design recommendations alongside `frontend-design` when shaping a product interface.
 
 ## Automatic tool setup
 
@@ -189,10 +205,25 @@ Omit a resource type to load all declared resources of that type; use `[]` to lo
 
 ## Development
 
+Use npm from the repository root with Node.js 22.19+ and the Pi peer dependencies available. See [AGENTS.md](AGENTS.md) for repository layout, conventions, and agent workflow guidance.
+
 ```sh
 npm ci --ignore-scripts
 npm run check
 npm test
 ```
+
+The root type-check covers extensions and libraries; WebUI targets have separate checks:
+
+```sh
+npm run check:server
+npm run check:web
+npm run test:webui
+npm run build
+```
+
+`npm run build` builds the browser app and also runs through `prepack`. `npm run dev` starts the local server and Vite development client; running Pi sessions requires an authenticated `pi` executable. There are no lint or format scripts.
+
+The tag-triggered publishing workflow (`.github/workflows/publish.yml`) uses Node.js 24 and runs `npm ci --ignore-scripts`, `npm run check`, and `npm test` before publishing. It does not explicitly run the separate server/browser type-checks or WebUI tests.
 
 Tests cover retained extension/resource contracts, agent configuration/routing/profile state, child-process protocol/cancellation, AskQuestion validation/lifecycle, recommended-tool setup/settings preservation, and skill routing. On Unix with Python 3, automated PTY tests drive the real Pi TUI renderer and native selector, checking keyboard interactions, startup choices, cancellation, cursor/raw-mode restoration, and listener cleanup. They use UI adapters rather than a live agent session; unsupported hosts explicitly skip these tests. Tests do not establish OS containment or live-model behavior. The permission evaluation, sandbox, and background-task runtime suites have been removed with those features.

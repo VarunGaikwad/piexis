@@ -31,7 +31,7 @@ test("init skips ignored or unavailable optional evidence without bypassing rest
 });
 
 test("bundled third-party skills retain provenance and licenses", async () => {
-  for (const name of ["caveman", "ponytail"]) {
+  for (const name of ["agent-browser", "caveman", "ponytail", "ui-ux-pro-max"]) {
     await access(new URL(`skills/${name}/LICENSE`, root));
     const notice = await readFile(new URL(`skills/${name}/NOTICE`, root), "utf8");
     assert.match(notice, /https:\/\/github\.com\//);
