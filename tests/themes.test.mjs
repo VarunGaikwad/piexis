@@ -30,4 +30,7 @@ test("bundled themes validate and render in truecolor and 256-color modes", asyn
   }
   assert.ok(names.has("midnight"));
   assert.ok(names.has("orange"));
+  assert.ok(names.has("neon"));
+  assert.ok(names.has("aurora"));
+  assert.ok(names.has("rosewood"));
 });
