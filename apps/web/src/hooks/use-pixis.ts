@@ -9,7 +9,7 @@ export function usePixis() {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [soundError, setSoundError] = useState("");
   const audio = useRef<BrowserSoundPlayer | null>(null);
-  audio.current ??= new BrowserSoundPlayer(() => new URLSearchParams(location.hash.slice(1)).get("token") || import.meta.env.VITE_PIXIS_TOKEN || "");
+  audio.current ??= new BrowserSoundPlayer(() => new URLSearchParams(location.hash.slice(1)).get("token") || import.meta.env.VITE_PIEXIS_TOKEN || "");
   const sounds = useRef<WebSoundNotifications | null>(null);
   sounds.current ??= new WebSoundNotifications((event) => {
     void audio.current?.play(event).then(() => setSoundError(audio.current?.lastError ?? ""));
@@ -44,7 +44,7 @@ export function usePixis() {
   }, []);
 
   useEffect(() => {
-    const token = new URLSearchParams(location.hash.slice(1)).get("token") || import.meta.env.VITE_PIXIS_TOKEN || "";
+    const token = new URLSearchParams(location.hash.slice(1)).get("token") || import.meta.env.VITE_PIEXIS_TOKEN || "";
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(url);
     socket.current = ws;

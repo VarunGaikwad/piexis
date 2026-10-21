@@ -22,7 +22,7 @@ test("sound HTTP route requires a token and serves only mapped local WAV files",
   await writeFile(join(root, "sounds", "attention.wav"), wav);
   await writeFile(join(root, "private.txt"), "never serve this");
   const child = spawn(process.execPath, ["--import", "tsx", fileURLToPath(new URL("../../apps/server/src/index.ts", import.meta.url))], {
-    env: { ...process.env, PIXIS_PORT: String(port), PIXIS_TOKEN: "fixture-token", PIXIS_WORKSPACE: root, PI_CODING_AGENT_DIR: root },
+    env: { ...process.env, PIEXIS_PORT: String(port), PIEXIS_TOKEN: "fixture-token", PIEXIS_WORKSPACE: root, PI_CODING_AGENT_DIR: root },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let diagnostic = "";

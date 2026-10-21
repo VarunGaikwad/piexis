@@ -53,7 +53,8 @@
       "./extensions/sound.ts",
       "./extensions/access-guard.ts",
       "./extensions/agents.ts",
-      "./extensions/webui.ts"
+      "./extensions/webui.ts",
+      "./extensions/repo-cache.ts"
     ],
     "skills": [
       "./skills"

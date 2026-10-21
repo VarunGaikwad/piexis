@@ -17,6 +17,22 @@ test("correlates JSONL responses and forwards streaming records", async () => {
   client.dispose();
 });
 
+test("uses PIEXIS_PI_BIN for the Pi executable", async (t) => {
+  const original = process.env.PIEXIS_PI_BIN;
+  t.after(() => {
+    if (original === undefined) delete process.env.PIEXIS_PI_BIN;
+    else process.env.PIEXIS_PI_BIN = original;
+  });
+  process.env.PIEXIS_PI_BIN = process.execPath;
+  const client = new PiRpcClient(process.cwd(), undefined, [path.join(process.cwd(), "tests/webui/fake-pi.mjs")]);
+  try {
+    const response = await client.command({ type: "get_state" });
+    assert.equal(response.success, true);
+  } finally {
+    client.dispose();
+  }
+});
+
 test("starts Pi through a Windows cmd launcher", { skip: process.platform !== "win32" }, async (t) => {
   const fixture = await mkdtemp(path.join(tmpdir(), "piexis-rpc-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));

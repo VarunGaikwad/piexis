@@ -158,15 +158,13 @@ Results have `status`: `answered`, `cancelled`, `aborted`, `requires_interaction
 
 Pi owns stdin, raw mode, cursor state, and focus restoration. Agent abort and session shutdown dismiss the screen; input closure/errors also settle it. Concurrent AskQuestion calls are explicitly rejected with `status: "error"`, in addition to Pi's sequential execution. Other extensions must respect Pi's UI ownership; this extension does not coordinate unrelated prompts. Non-TUI/non-TTY runs return `requires_interaction` without reading input.
 
-## Removed features
+## Repository exploration cache
 
-PieXis no longer provides permission modes, tool approvals, classifier review, plan-to-execution handoffs, filtered search, or background worktree tasks. Their commands, shortcuts, flags, and configuration initialization have been removed. Tool execution follows Pi, the best-effort access guard described above, and any other installed extensions; PieXis does not provide sandboxing.
+The bundled `extensions/repo-cache.ts` adds `get_changed_files`, `get_file_summary`, and `/repo-cache-status`. A local Git-aware SHA-256 index reuses unchanged file/chunk outlines while native `grep`, `find`, `read`, and shell commands remain unchanged. Cache tools validate working-tree freshness before returning results. See [activation, exclusions, limits, and benchmarks](docs/repo-cache.md).
 
-Existing `piexis` settings, legacy configuration files, session records, and retained task worktrees are not deleted automatically. Old classifier, execution-model, and background-model settings are no longer read. Remove obsolete configuration manually if desired, preserving unrelated settings and any work you need. Remove explicit references to deleted extensions from your Pi resource settings or launch arguments.
+## PIEXIS WebUI (preview)
 
-## PIXIS WebUI (preview)
-
-PIXIS 2.0 adds a local WebUI without replacing the Pi TUI. Each browser session observes a backend-owned, long-lived Pi RPC process. After installing or updating Piexis, start Pi inside the project and run:
+PIEXIS 2.0 adds a local WebUI without replacing the Pi TUI. Each browser session observes a backend-owned, long-lived Pi RPC process. After installing or updating Piexis, start Pi inside the project and run:
 
 ```text
 /webui
@@ -178,7 +176,7 @@ Pi displays a local URL containing a per-launch access token; open that URL in a
 piexis-web --workspace C:\path\to\your-project
 ```
 
-The server uses the requested workspace and starts Pi with documented `--mode rpc`. Pi must be installed, authenticated, and available as `pi` (or set `PIXIS_PI_BIN`). Use `.env.example` as the configuration reference. `npm run dev` remains available only for developing Piexis itself and serves the Vite development client on port 5173.
+The server uses the requested workspace and starts Pi with documented `--mode rpc`. Pi must be installed, authenticated, and available as `pi` (or set `PIEXIS_PI_BIN`). Use `.env.example` as the configuration reference. `npm run dev` remains available only for developing Piexis itself and serves the Vite development client on port 5173.
 
 The current preview supports genuine streamed assistant text, tool lifecycle cards, abort, Pi extension dialog forwarding, multiple observed backend sessions, and read-only Git status. It binds the agent server to `127.0.0.1`, requires a per-launch token and exact browser origin, validates WebSocket messages, confines file paths before Git diffs, and never sends secrets to the browser. Localhost alone is not treated as authentication.
 

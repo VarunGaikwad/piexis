@@ -23,7 +23,7 @@ test("WebUI launcher resolves tsx from its installation, not the workspace", asy
   // A finite TypeScript entry point exercises the real launcher without leaving a server running.
   await writeFile(path.join(installed, "apps", "server", "src", "index.ts"), `
     const cwd: string = process.cwd();
-    console.log(JSON.stringify({ cwd, workspace: process.env.PIXIS_WORKSPACE, port: process.env.PIXIS_PORT, token: process.env.PIXIS_TOKEN, origin: process.env.PIXIS_ORIGIN }));
+    console.log(JSON.stringify({ cwd, workspace: process.env.PIEXIS_WORKSPACE, port: process.env.PIEXIS_PORT, token: process.env.PIEXIS_TOKEN, origin: process.env.PIEXIS_ORIGIN }));
   `);
 
   const result = spawnSync(process.execPath, [launcher, "--workspace", workspace, "--port", "4321", "--token", "test-only-token"], {
@@ -40,5 +40,22 @@ test("WebUI launcher resolves tsx from its installation, not the workspace", asy
     port: "4321",
     token: "test-only-token",
     origin: "http://127.0.0.1:4321"
+  });
+
+  const fromEnv = spawnSync(process.execPath, [launcher, "--workspace", workspace], {
+    cwd: workspace,
+    env: { ...process.env, PIEXIS_PORT: "4322", PIEXIS_TOKEN: "env-test-token" },
+    encoding: "utf8",
+    timeout: 15_000,
+    windowsHide: true
+  });
+  assert.equal(fromEnv.error, undefined);
+  assert.equal(fromEnv.status, 0, fromEnv.stderr);
+  assert.deepEqual(JSON.parse(fromEnv.stdout), {
+    cwd: workspace,
+    workspace,
+    port: "4322",
+    token: "env-test-token",
+    origin: "http://127.0.0.1:4322"
   });
 });

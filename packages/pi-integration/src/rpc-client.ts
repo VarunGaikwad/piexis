@@ -21,7 +21,7 @@ export class PiRpcClient extends EventEmitter {
 
   constructor(
     private readonly cwd: string,
-    private readonly executable = process.env.PIXIS_PI_BIN || (process.platform === "win32" ? "pi.cmd" : "pi"),
+    private readonly executable = process.env.PIEXIS_PI_BIN || (process.platform === "win32" ? "pi.cmd" : "pi"),
     private readonly executableArgs: string[] = []
   ) {
     super();
