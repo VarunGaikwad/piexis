@@ -20,6 +20,85 @@
       "type": "boolean",
       "description": "Automatically select a profile for clear requests."
     },
+    "codeHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "analyzeChangedFiles": {
+          "type": "boolean"
+        },
+        "reviewAtTaskCompletion": {
+          "type": "boolean"
+        },
+        "enableComplexityChecks": {
+          "type": "boolean"
+        },
+        "enableDuplicationChecks": {
+          "type": "boolean"
+        },
+        "enableArchitectureChecks": {
+          "type": "boolean"
+        },
+        "enableAiReview": {
+          "type": "boolean"
+        },
+        "enableRuff": {
+          "type": "boolean"
+        },
+        "requireValidation": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "observe",
+            "safe",
+            "autonomous"
+          ]
+        },
+        "largeFileThresholdLines": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 20000
+        },
+        "maxFilesPerReview": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "maxAutomaticFixesPerTask": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "cooldownMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000
+        },
+        "maxReviewMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 120000
+        },
+        "maxAiOutputTokens": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 4096
+        },
+        "exclude": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        }
+      }
+    },
     "subagent_variant_overrides": {
       "type": "object",
       "additionalProperties": false,

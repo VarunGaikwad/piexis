@@ -2,6 +2,7 @@ import { link, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/pro
 import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { codeHealthSchema } from "./code-health-config.ts";
 import { agentNames, createInitialAgentConfig, effortLevels, type AgentConfig, type AgentName, type Effort } from "./agent-config.ts";
 
 export { agentNames, type AgentConfig, type AgentName, effortLevels, type Effort } from "./agent-config.ts";
@@ -34,10 +35,11 @@ export function parseAgentConfig(value: unknown): AgentConfig {
   const source = object(value, "Agent configuration");
   const result: AgentConfig = {};
   for (const key of Object.keys(source)) {
-    if (!["$schema", "model", "small_model", "subagent_model", "delegate_exploration", "auto_profile", "subagent_variant_overrides"].includes(key)) {
+    if (!["$schema", "model", "small_model", "subagent_model", "delegate_exploration", "auto_profile", "subagent_variant_overrides", "codeHealth"].includes(key)) {
       throw new Error(`Unknown agent configuration key: ${key}`);
     }
   }
+  if (source.codeHealth !== undefined) result.codeHealth = codeHealthSchema.parse(source.codeHealth);
   if (source.$schema !== undefined) {
     if (typeof source.$schema !== "string") throw new Error("$schema must be a string");
     result.$schema = source.$schema;
@@ -93,7 +95,9 @@ export async function loadAgentConfig(cwd: string, agentDir: string, trusted: bo
       overrides[name] = { ...overrides[name], ...project.subagent_variant_overrides[name] };
     }
   }
-  return { ...global, ...project, subagent_variant_overrides: overrides };
+  return { ...global, ...project, subagent_variant_overrides: overrides,
+    ...((global.codeHealth || project.codeHealth) ? { codeHealth: { ...global.codeHealth, ...project.codeHealth } } : {}),
+  };
 }
 
 export async function hasProjectAgentConfig(cwd: string): Promise<boolean> {

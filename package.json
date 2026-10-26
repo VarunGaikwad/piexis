@@ -19,6 +19,7 @@
     "apps/web/dist/",
     "bin/",
     "extensions/",
+    "docs/code-health.md",
     "lib/",
     "packages/",
     "prompts/",
@@ -54,7 +55,8 @@
       "./extensions/access-guard.ts",
       "./extensions/agents.ts",
       "./extensions/webui.ts",
-      "./extensions/repo-cache.ts"
+      "./extensions/repo-cache.ts",
+      "./extensions/code-health.ts"
     ],
     "skills": [
       "./skills"

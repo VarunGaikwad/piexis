@@ -8,11 +8,11 @@ const root = new URL("../", import.meta.url);
 
 test("manifest loads only retained extensions and resources", async () => {
   const manifest = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
-  assert.deepEqual(manifest.pi.extensions, ["./extensions/ask-question.ts", "./extensions/ui.ts", "./extensions/recommended-tools.ts", "./extensions/sound.ts", "./extensions/access-guard.ts", "./extensions/agents.ts", "./extensions/webui.ts", "./extensions/repo-cache.ts"]);
+  assert.deepEqual(manifest.pi.extensions, ["./extensions/ask-question.ts", "./extensions/ui.ts", "./extensions/recommended-tools.ts", "./extensions/sound.ts", "./extensions/access-guard.ts", "./extensions/agents.ts", "./extensions/webui.ts", "./extensions/repo-cache.ts", "./extensions/code-health.ts"]);
   for (const paths of Object.values(manifest.pi)) {
     for (const path of paths) await access(new URL(path, root));
   }
-  assert.deepEqual((await readdir(new URL("extensions/", root))).sort(), ["access-guard.ts", "agents.ts", "ask-question.ts", "recommended-tools.ts", "repo-cache.ts", "sound.ts", "ui.ts", "webui.ts"]);
+  assert.deepEqual((await readdir(new URL("extensions/", root))).sort(), ["access-guard.ts", "agents.ts", "ask-question.ts", "code-health.ts", "recommended-tools.ts", "repo-cache.ts", "sound.ts", "ui.ts", "webui.ts"]);
   assert.equal(manifest.dependencies?.["@anthropic-ai/sandbox-runtime"], undefined);
   for (const removed of ["test:runtime", "test:sandbox", "eval:permissions"]) {
     assert.equal(manifest.scripts[removed], undefined);

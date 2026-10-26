@@ -17,7 +17,8 @@ test("UI tip JSON reload bypasses Pi-loader legacy data and rejects invalid tips
     moduleCache: false,
     alias: {
       "@earendil-works/pi-tui": import.meta.resolve("@earendil-works/pi-tui"),
-      "@earendil-works/pi-coding-agent": import.meta.resolve("@earendil-works/pi-coding-agent")
+      "@earendil-works/pi-coding-agent": import.meta.resolve("@earendil-works/pi-coding-agent"),
+      "zod": import.meta.resolve("zod")
     }
   }).import(entry, { default: true });
   async function render(factory) {
@@ -39,6 +40,7 @@ test("UI tip JSON reload bypasses Pi-loader legacy data and rejects invalid tips
     await writeFile(asset, JSON.stringify(["Legacy cached tip"]));
     await writeFile(join(root, "lib", "agent-config.ts"), await readFile(new URL("../lib/agent-config.ts", import.meta.url), "utf8"));
     await writeFile(join(root, "lib", "agents.ts"), await readFile(new URL("../lib/agents.ts", import.meta.url), "utf8"));
+    await copyFile(new URL("../lib/code-health-config.ts", import.meta.url), join(root, "lib", "code-health-config.ts"));
     await copyFile(new URL("../lib/ui-git.ts", import.meta.url), join(root, "lib", "ui-git.ts"));
     await writeFile(entry, 'import tips from "../lib/ui-tips.json" with { type: "json" }; export default () => tips;');
     assert.deepEqual((await load())(), ["Legacy cached tip"]);

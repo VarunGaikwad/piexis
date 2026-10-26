@@ -1,3 +1,5 @@
+import type { CodeHealthSettings } from "./code-health-config.ts";
+
 export const agentNames = ["plan", "orchestrator", "debug", "ask", "code"] as const;
 export type AgentName = typeof agentNames[number];
 export const effortLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -12,6 +14,7 @@ export interface AgentConfig {
   subagent_model?: string;
   delegate_exploration?: boolean;
   auto_profile?: boolean;
+  codeHealth?: CodeHealthSettings;
   subagent_variant_overrides?: Partial<Record<AgentName, { model?: string; effort?: Effort }>>;
 }
 
@@ -34,6 +37,7 @@ export const agentConfigCapabilities = {
   subagent_model: "choose the normal model for delegated work",
   delegate_exploration: "opt in to cheap, read-only codebase exploration",
   auto_profile: "automatically select a profile for clear requests",
+  codeHealth: "configure continuous, conservative code-health review",
   subagent_variant_overrides: "customize model and effort for each agent profile",
 } satisfies Record<AgentConfigSetting, string>;
 
@@ -54,6 +58,7 @@ export function createInitialAgentConfig(selected: string, inherited: AgentConfi
     subagent_model: inherited.subagent_model ?? selected,
     delegate_exploration: inherited.delegate_exploration ?? initialAgentConfigDefaults.delegate_exploration,
     auto_profile: inherited.auto_profile ?? initialAgentConfigDefaults.auto_profile,
+    ...(inherited.codeHealth ? { codeHealth: inherited.codeHealth } : {}),
     subagent_variant_overrides: overrides,
   };
 }
