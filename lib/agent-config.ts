@@ -26,7 +26,8 @@ export const initialAgentConfigDefaults = {
   "$schema": agentConfigSchemaUrl,
   delegate_exploration: false,
   auto_profile: false,
-} satisfies Pick<AgentConfig, "$schema" | "delegate_exploration" | "auto_profile">;
+  codeHealth: { enabled: true },
+} satisfies Pick<AgentConfig, "$schema" | "delegate_exploration" | "auto_profile" | "codeHealth">;
 
 /** Header copy for incomplete project agent configuration. */
 export type AgentConfigSetting = Exclude<keyof AgentConfig, "$schema">;
@@ -58,7 +59,7 @@ export function createInitialAgentConfig(selected: string, inherited: AgentConfi
     subagent_model: inherited.subagent_model ?? selected,
     delegate_exploration: inherited.delegate_exploration ?? initialAgentConfigDefaults.delegate_exploration,
     auto_profile: inherited.auto_profile ?? initialAgentConfigDefaults.auto_profile,
-    ...(inherited.codeHealth ? { codeHealth: inherited.codeHealth } : {}),
+    codeHealth: inherited.codeHealth ?? { ...initialAgentConfigDefaults.codeHealth },
     subagent_variant_overrides: overrides,
   };
 }

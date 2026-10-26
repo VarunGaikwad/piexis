@@ -140,6 +140,7 @@ test("opt-in agent scaffold uses the active model, restrictive permissions and a
     const path = join(f.cwd, ".pi", "agent.json");
     assert.deepEqual(JSON.parse(await readFile(path, "utf8")), {
       $schema: agentConfigSchemaUrl, model: "test/current", small_model: "test/current", subagent_model: "test/current", delegate_exploration: false, auto_profile: false,
+      codeHealth: { enabled: true },
       subagent_variant_overrides: {
         plan: { model: "test/current", effort: "high" },
         orchestrator: { model: "test/current", effort: "high" },
@@ -165,6 +166,7 @@ test("setup-agents command fills only missing project settings", async () => {
     assert.equal(config.model, "test/custom");
     assert.equal(config.delegate_exploration, true);
     assert.equal(config.auto_profile, false);
+    assert.deepEqual(config.codeHealth, { enabled: true });
     assert.equal(config.small_model, "test/custom");
     assert.equal(config.subagent_model, "test/custom");
     assert.equal(config.subagent_variant_overrides.code.model, "test/custom");
@@ -174,9 +176,22 @@ test("setup-agents command fills only missing project settings", async () => {
   }));
 });
 
+test("setup-agents preserves existing project code-health settings", async () => {
+  for (const codeHealth of [{ enabled: false }, { mode: "observe", enableAiReview: false }]) {
+    await fixture(async (f) => environment(f, async () => {
+      await writeFile(join(f.agentDir, "agent.json"), JSON.stringify({ codeHealth: { enabled: true } }));
+      await writeFile(join(f.cwd, ".pi", "agent.json"), JSON.stringify({ codeHealth }));
+      const h = harness(f);
+      await h.commands.get("setup-agents").handler("", h.ctx);
+      const config = JSON.parse(await readFile(join(f.cwd, ".pi", "agent.json"), "utf8"));
+      assert.deepEqual(config.codeHealth, codeHealth);
+    }));
+  }
+});
+
 test("agent scaffold preserves inherited user configuration", async () => {
   await fixture(async (f) => {
-    const inherited = { model: "test/main", small_model: "test/small", subagent_model: "test/worker", delegate_exploration: true, auto_profile: true, subagent_variant_overrides: {
+    const inherited = { model: "test/main", small_model: "test/small", subagent_model: "test/worker", delegate_exploration: true, auto_profile: true, codeHealth: { enabled: false, mode: "observe" }, subagent_variant_overrides: {
       debug: { effort: "off" }, ask: { model: "test/answer" }, code: { model: "test/code", effort: "max" }
     } };
     const path = join(f.agentDir, "agent.json");
