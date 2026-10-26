@@ -2,6 +2,7 @@
   "packages": [],
   "quietStartup": true,
   "theme": "dark",
+  "sessionDir": "./.pi/sessions",
   "defaultTools": [
     "+grep",
     "+find",
